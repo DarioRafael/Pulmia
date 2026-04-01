@@ -60,14 +60,7 @@ export function InputBar({ onSend, disabled }: InputBarProps) {
     }
 
     function handleMicClick() {
-        // El backend (pywebview) gestiona el microfono.
-        // Esta funcion se conectara con pywebview.api.on_mic_click()
-        // cuando se integre el puente con Python.
         setMicActive(v => !v)
-        try {
-            // @ts-ignore — pywebview se inyecta en tiempo de ejecucion
-            window.pywebview?.api?.on_mic_click()
-        } catch (_) {}
     }
 
     return (
