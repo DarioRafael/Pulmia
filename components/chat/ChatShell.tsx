@@ -62,6 +62,17 @@ function clearSearchMarks() {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Tipos de contenido multimodal ─────────────────────────────────────────────
+type TextBlock = { type: 'text'; text: string }
+type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+type ContentBlock = TextBlock | ImageBlock
+
+type HistoryMessage = {
+    role: 'user' | 'assistant'
+    content: string | ContentBlock[]
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function ChatShell() {
     const { messages, isTyping, status, setStatus, addMessage, startStream, appendChunk, endStream, showTyping, hideTyping, clearMessages } = useChat()
     const { message: toastMsg, visible: toastVisible, showToast } = useToast()
@@ -149,11 +160,29 @@ export function ChatShell() {
         showToast('Sesion cargada')
     }
 
+    // ── Helpers para construir content multimodal ────────────────────────────────
+    function buildContentWithImage(text: string, base64: string, mime: string): ContentBlock[] {
+        const blocks: ContentBlock[] = [
+            {
+                type: 'image',
+                source: { type: 'base64', media_type: mime, data: base64 },
+            },
+        ]
+        if (text.trim()) blocks.push({ type: 'text', text })
+        return blocks
+    }
+
+    function extractBase64FromDataUrl(dataUrl: string): { data: string; mime: string } {
+        const [header, data] = dataUrl.split(',')
+        const mime = header.match(/:(.*?);/)?.[1] ?? 'image/jpeg'
+        return { data, mime }
+    }
+
     // ── Enviar mensaje ──────────────────────────────────────────────────────────
     function handleSend(text: string, imageB64?: string, imageMime?: string) {
         if (!text.trim() && !imageB64) return
 
-        // Mostrar mensaje del usuario inmediatamente
+        // Mostrar mensaje del usuario inmediatamente en la UI
         addMessage('user', text, imageB64 ? `data:${imageMime};base64,${imageB64}` : undefined)
 
         setStatusKey('thinking')
@@ -170,12 +199,34 @@ export function ChatShell() {
             )
         }
 
-        // Construir historial para la API (solo texto, sin imágenes por ahora)
-        const history = messages
+        // ── Construir historial multimodal para la API ──────────────────────────
+        const history: HistoryMessage[] = messages
             .filter(m => !m.isStreaming)
-            .map(m => ({ role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant', content: m.content }))
-        // Agregar el mensaje actual
-        history.push({ role: 'user', content: text || '(imagen adjunta)' })
+            .map(m => {
+                // Si el mensaje tiene imagen adjunta, construir content multimodal
+                if (m.imageDataUrl) {
+                    const { data, mime } = extractBase64FromDataUrl(m.imageDataUrl)
+                    return {
+                        role: m.role as 'user' | 'assistant',
+                        content: buildContentWithImage(m.content, data, mime),
+                    }
+                }
+                return {
+                    role: m.role as 'user' | 'assistant',
+                    content: m.content,
+                }
+            })
+
+        // Agregar el mensaje actual (con imagen si la hay)
+        if (imageB64 && imageMime) {
+            history.push({
+                role: 'user',
+                content: buildContentWithImage(text, imageB64, imageMime),
+            })
+        } else {
+            history.push({ role: 'user', content: text || '(imagen adjunta)' })
+        }
+        // ───────────────────────────────────────────────────────────────────────
 
         let isStreamStarted = false
 

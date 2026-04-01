@@ -2,9 +2,13 @@
 // Cliente — llama al route handler /api/chat.
 // No necesita saber nada del proveedor ni de la API key.
 
+type TextBlock = { type: 'text'; text: string }
+type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+type ContentBlock = TextBlock | ImageBlock
+
 export interface ChatMessage {
     role: 'user' | 'assistant'
-    content: string
+    content: string | ContentBlock[]
 }
 
 export interface StreamCallbacks {
