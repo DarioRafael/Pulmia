@@ -8,6 +8,7 @@ import { InputBar } from '@/components/chat/InputBar'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { Toast, useToast } from '@/components/ui/Toast'
 import { useChat } from '@/lib/hooks/useChat'
+import { streamChat } from '@/lib/api/chat'
 import { Chat } from '@/lib/types'
 
 function generateId() {
@@ -169,53 +170,36 @@ export function ChatShell() {
             )
         }
 
-        // Enviar al backend via pywebview
-        try {
-            if (imageB64) {
-                // @ts-ignore
-                window.pywebview?.api?.send_image(imageB64, imageMime, text)
-            } else {
-                // @ts-ignore
-                window.pywebview?.api?.send_message(text)
-            }
-        } catch (_) {
-            // Modo debug sin pywebview: simular respuesta
-            setTimeout(() => {
-                hideTyping()
-                startStream()
-                const demo = 'Recibido. El analisis de la imagen esta en proceso...'
-                let i = 0
-                const interval = setInterval(() => {
-                    appendChunk(demo[i])
-                    i++
-                    if (i >= demo.length) {
-                        clearInterval(interval)
-                        endStream()
-                        setStatusKey('online')
-                    }
-                }, 30)
-            }, 800)
-        }
-    }
+        // Construir historial para la API (solo texto, sin imágenes por ahora)
+        const history = messages
+            .filter(m => !m.isStreaming)
+            .map(m => ({ role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant', content: m.content }))
+        // Agregar el mensaje actual
+        history.push({ role: 'user', content: text || '(imagen adjunta)' })
 
-    // ── API publica para pywebview ──────────────────────────────────────────────
-    useEffect(() => {
-        // El backend Python llama estas funciones a traves del puente pywebview
-        // @ts-ignore
-        window.ui = {
-            setStatus: (txt: string, key: string) => {
-                setStatus(txt)
-                setStatusKey(key === 'accent' || key === 'green' ? 'online' : key === 'orange' ? 'thinking' : 'idle')
+        let isStreamStarted = false
+
+        streamChat(history, {
+            onChunk: (chunk) => {
+                if (!isStreamStarted) {
+                    hideTyping()
+                    startStream()
+                    isStreamStarted = true
+                }
+                appendChunk(chunk)
             },
-            addMessage: (sender: string, text: string, isUser: boolean) => addMessage(isUser ? 'user' : 'ai', text),
-            showTyping,
-            hideTyping,
-            showToast,
-            startStream,
-            appendChunk,
-            endStream: () => { endStream(); setStatusKey('online') },
-        }
-    }, [addMessage, showTyping, hideTyping, showToast, startStream, appendChunk, endStream, setStatus])
+            onDone: () => {
+                endStream()
+                setStatusKey('online')
+            },
+            onError: (err) => {
+                hideTyping()
+                endStream()
+                setStatusKey('idle')
+                showToast(`Error: ${err.message}`)
+            },
+        })
+    }
 
     return (
         <div style={{ display: 'flex', flexDirection: 'row', width: '100vw', height: '100vh' }}>
