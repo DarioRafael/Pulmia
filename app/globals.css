@@ -116,9 +116,7 @@ body {
   background: var(--border-h);
   border-radius: 2px;
 }
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--t2);
-}
+*::-webkit-scrollbar-thumb:hover { background: var(--t2); }
 
 /* ── Search highlight ───────────────────────────────────────────────── */
 mark {
@@ -145,6 +143,10 @@ mark {
   transform: scale(1.015);
   border-color: var(--accent);
 }
+
+/* ── Botón copiar: visible solo en hover sobre la burbuja ───────────── */
+.msg-wrap:hover .copy-btn { opacity: 1 !important; }
+.msg-wrap:hover .msg-ts   { opacity: 1 !important; }
 
 /* ── Markdown en burbujas ───────────────────────────────────────────── */
 .bubble strong, .bubble b {
@@ -180,13 +182,8 @@ mark {
   padding-left: 18px;
   margin-top: 6px;
 }
-.bubble li {
-  margin-bottom: 3px;
-  color: var(--t0);
-}
-.bubble p + p {
-  margin-top: 8px;
-}
+.bubble li { margin-bottom: 3px; color: var(--t0); }
+.bubble p + p { margin-top: 8px; }
 .bubble h3, .bubble h4 {
   font-size: 13px;
   font-weight: 600;
@@ -203,16 +200,19 @@ mark {
   border-radius: var(--r8);
 }
 
-/* ── Streaming cursor ───────────────────────────────────────────────── */
-.bubble.streaming::after {
-  content: '▋';
-  display: inline-block;
-  color: var(--accent);
-  animation: blink 0.7s step-end infinite;
-  margin-left: 2px;
-  font-size: 0.75em;
-  vertical-align: baseline;
-}
+/*
+ * ── Cursor de streaming ELIMINADO ────────────────────────────────────
+ *
+ * El cursor `▋` parpadeante con ::after causaba que el punto
+ * se quedara visible si endStream() no se llamaba correctamente.
+ *
+ * REEMPLAZADO POR: tres puntos animados inline en MessageBubble.tsx,
+ * renderizados SOLO mientras isStreaming === true como nodos React.
+ * Cuando isStreaming pasa a false, los puntos desaparecen de forma
+ * garantizada porque React los desmonta del DOM.
+ *
+ * NO restaurar .bubble.streaming::after aquí.
+ */
 
 /* ── Divider clínico para separar secciones de fecha ───────────────── */
 .msg-date-divider {
@@ -235,9 +235,29 @@ mark {
 }
 
 /* ── Animaciones ────────────────────────────────────────────────────── */
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+
+/* Entrada de mensajes — FALTABA en el CSS original */
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Tres puntos de streaming (usados en MessageBubble.tsx) */
+@keyframes dot-stream {
+  0%, 80%, 100% {
+    opacity: 0.2;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
 }
 
 @keyframes mic-pulse {
@@ -248,4 +268,9 @@ mark {
 @keyframes drop-in {
   from { opacity: 0; transform: scale(0.94); }
   to   { opacity: 1; transform: scale(1);    }
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.85); }
 }
