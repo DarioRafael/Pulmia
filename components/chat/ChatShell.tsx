@@ -15,7 +15,6 @@ function generateId() {
     return Math.random().toString(36).slice(2, 10)
 }
 
-// ── Busqueda en burbujas del DOM ──────────────────────────────────────────────
 function doSearch(query: string): Element[] {
     clearSearchMarks()
     if (!query.trim()) return []
@@ -35,8 +34,7 @@ function doSearch(query: string): Element[] {
             if (!re.test(tn.nodeValue || '')) return
             re.lastIndex = 0
             const frag = document.createDocumentFragment()
-            let last = 0
-            let m: RegExpExecArray | null
+            let last = 0; let m: RegExpExecArray | null
             while ((m = re.exec(tn.nodeValue || '')) !== null) {
                 if (m.index > last) frag.appendChild(document.createTextNode((tn.nodeValue || '').slice(last, m.index)))
                 const mark = document.createElement('mark')
@@ -60,52 +58,33 @@ function clearSearchMarks() {
     })
     document.querySelectorAll('.search-match').forEach(b => b.classList.remove('search-match'))
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
-// ── Tipos de contenido multimodal ─────────────────────────────────────────────
 type TextBlock = { type: 'text'; text: string }
 type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
 type ContentBlock = TextBlock | ImageBlock
-
-type HistoryMessage = {
-    role: 'user' | 'assistant'
-    content: string | ContentBlock[]
-}
-// ─────────────────────────────────────────────────────────────────────────────
+type HistoryMessage = { role: 'user' | 'assistant'; content: string | ContentBlock[] }
 
 export function ChatShell() {
     const { messages, isTyping, status, setStatus, addMessage, startStream, appendChunk, endStream, showTyping, hideTyping, clearMessages } = useChat()
     const { message: toastMsg, visible: toastVisible, showToast } = useToast()
 
-    // Layout
     const [sidebarOpen, setSidebarOpen] = useState(false)
     const [searchOpen, setSearchOpen] = useState(false)
-
-    // Chats / sesiones
     const [chats, setChats] = useState<Chat[]>([])
     const [activeChatId, setActiveChatId] = useState<string | null>(null)
-
-    // Busqueda
     const [searchQuery, setSearchQuery] = useState('')
     const [searchMatches, setSearchMatches] = useState<Element[]>([])
     const [searchIdx, setSearchIdx] = useState(0)
-
-    // Estado de conexion con el backend
     const [statusKey, setStatusKey] = useState<'idle' | 'thinking' | 'online'>('idle')
 
-    // ── Keyboard shortcut Ctrl+F ────────────────────────────────────────────────
     useEffect(() => {
-        function handleKey(e: KeyboardEvent) {
-            if (e.ctrlKey && e.key === 'f') {
-                e.preventDefault()
-                setSearchOpen(v => !v)
-            }
+        const h = (e: KeyboardEvent) => {
+            if (e.ctrlKey && e.key === 'f') { e.preventDefault(); setSearchOpen(v => !v) }
         }
-        document.addEventListener('keydown', handleKey)
-        return () => document.removeEventListener('keydown', handleKey)
+        document.addEventListener('keydown', h)
+        return () => document.removeEventListener('keydown', h)
     }, [])
 
-    // ── Busqueda ────────────────────────────────────────────────────────────────
     function handleSearchQuery(q: string) {
         setSearchQuery(q)
         const matches = doSearch(q)
@@ -136,38 +115,27 @@ export function ChatShell() {
         setSearchIdx(0)
     }
 
-    // ── Chats / sesiones ────────────────────────────────────────────────────────
     function handleNewChat() {
         const id = generateId()
         const chat: Chat = {
-            id,
-            title: `Sesion ${chats.length + 1}`,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            messageCount: 0,
+            id, title: `Sesión ${chats.length + 1}`,
+            createdAt: new Date(), updatedAt: new Date(), messageCount: 0,
         }
         setChats(prev => [chat, ...prev])
         setActiveChatId(id)
         clearMessages()
-        showToast('Nueva sesion creada')
+        showToast('Nueva sesión creada')
     }
 
     function handleSelectChat(id: string) {
         if (id === activeChatId) return
         setActiveChatId(id)
         clearMessages()
-        // Aqui se cargara el historial del chat desde el backend cuando se integre
-        showToast('Sesion cargada')
+        showToast('Sesión cargada')
     }
 
-    // ── Helpers para construir content multimodal ────────────────────────────────
     function buildContentWithImage(text: string, base64: string, mime: string): ContentBlock[] {
-        const blocks: ContentBlock[] = [
-            {
-                type: 'image',
-                source: { type: 'base64', media_type: mime, data: base64 },
-            },
-        ]
+        const blocks: ContentBlock[] = [{ type: 'image', source: { type: 'base64', media_type: mime, data: base64 } }]
         if (text.trim()) blocks.push({ type: 'text', text })
         return blocks
     }
@@ -178,84 +146,48 @@ export function ChatShell() {
         return { data, mime }
     }
 
-    // ── Enviar mensaje ──────────────────────────────────────────────────────────
     function handleSend(text: string, imageB64?: string, imageMime?: string) {
         if (!text.trim() && !imageB64) return
-
-        // Mostrar mensaje del usuario inmediatamente en la UI
         addMessage('user', text, imageB64 ? `data:${imageMime};base64,${imageB64}` : undefined)
-
         setStatusKey('thinking')
         showTyping()
 
-        // Actualizar conteo de mensajes en el chat activo
         if (activeChatId) {
-            setChats(prev =>
-                prev.map(c =>
-                    c.id === activeChatId
-                        ? { ...c, messageCount: c.messageCount + 1, updatedAt: new Date(), title: c.messageCount === 0 && text ? text.slice(0, 40) : c.title }
-                        : c
-                )
-            )
+            setChats(prev => prev.map(c =>
+                c.id === activeChatId
+                    ? { ...c, messageCount: c.messageCount + 1, updatedAt: new Date(), title: c.messageCount === 0 && text ? text.slice(0, 40) : c.title }
+                    : c
+            ))
         }
 
-        // ── Construir historial multimodal para la API ──────────────────────────
-        const history: HistoryMessage[] = messages
-            .filter(m => !m.isStreaming)
-            .map(m => {
-                // Si el mensaje tiene imagen adjunta, construir content multimodal
-                if (m.imageDataUrl) {
-                    const { data, mime } = extractBase64FromDataUrl(m.imageDataUrl)
-                    return {
-                        role: m.role as 'user' | 'assistant',
-                        content: buildContentWithImage(m.content, data, mime),
-                    }
-                }
-                return {
-                    role: m.role as 'user' | 'assistant',
-                    content: m.content,
-                }
-            })
+        const history: HistoryMessage[] = messages.filter(m => !m.isStreaming).map(m => {
+            if (m.imageDataUrl) {
+                const { data, mime } = extractBase64FromDataUrl(m.imageDataUrl)
+                return { role: m.role as 'user' | 'assistant', content: buildContentWithImage(m.content, data, mime) }
+            }
+            return { role: m.role as 'user' | 'assistant', content: m.content }
+        })
 
-        // Agregar el mensaje actual (con imagen si la hay)
         if (imageB64 && imageMime) {
-            history.push({
-                role: 'user',
-                content: buildContentWithImage(text, imageB64, imageMime),
-            })
+            history.push({ role: 'user', content: buildContentWithImage(text, imageB64, imageMime) })
         } else {
             history.push({ role: 'user', content: text || '(imagen adjunta)' })
         }
-        // ───────────────────────────────────────────────────────────────────────
 
         let isStreamStarted = false
-
         streamChat(history, {
             onChunk: (chunk) => {
-                if (!isStreamStarted) {
-                    hideTyping()
-                    startStream()
-                    isStreamStarted = true
-                }
+                if (!isStreamStarted) { hideTyping(); startStream(); isStreamStarted = true }
                 appendChunk(chunk)
             },
-            onDone: () => {
-                endStream()
-                setStatusKey('online')
-            },
-            onError: (err) => {
-                hideTyping()
-                endStream()
-                setStatusKey('idle')
-                showToast(`Error: ${err.message}`)
-            },
+            onDone: () => { endStream(); setStatusKey('online') },
+            onError: (err) => { hideTyping(); endStream(); setStatusKey('idle'); showToast(`Error: ${err.message}`) },
         })
     }
 
     return (
         <div style={{ display: 'flex', flexDirection: 'row', width: '100vw', height: '100vh' }}>
 
-            {/* Rail lateral de iconos */}
             <Rail
                 onToggleSidebar={() => setSidebarOpen(v => !v)}
                 onToggleSearch={() => setSearchOpen(v => !v)}
@@ -264,7 +196,6 @@ export function ChatShell() {
                 statusKey={statusKey}
             />
 
-            {/* Panel lateral de sesiones / chats por paciente */}
             <ChatSidebar
                 open={sidebarOpen}
                 chats={chats}
@@ -273,112 +204,102 @@ export function ChatShell() {
                 onNewChat={handleNewChat}
             />
 
-            {/* Area principal de chat */}
-            <main
-                style={{
+            <main style={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                overflow: 'hidden',
+                background: 'var(--bg-0)',
+                flex: 1,
+                minWidth: 0,
+                position: 'relative',
+            }}>
+                {/* ── Header ─────────────────────────────────────────────────── */}
+                <header style={{
                     display: 'flex',
-                    flexDirection: 'column',
-                    height: '100%',
-                    overflow: 'hidden',
-                    background: 'var(--bg-0)',
-                    flex: 1,
-                    minWidth: 0,
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '0 16px',
+                    height: 50,
+                    flexShrink: 0,
+                    borderBottom: '1px solid var(--border)',
+                    background: 'var(--bg-glass)',
+                    backdropFilter: 'blur(16px)',
                     position: 'relative',
-                }}
-            >
-                {/* Header */}
-                <div
-                    style={{
+                    zIndex: 10,
+                }}>
+                    {/* Avatar del sistema */}
+                    <div style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 'var(--r6)',
+                        flexShrink: 0,
+                        background: 'var(--accent)',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 10,
-                        padding: '0 16px',
-                        height: 52,
-                        flexShrink: 0,
-                        borderBottom: '1px solid var(--border)',
-                        background: 'rgba(11,13,22,0.94)',
-                        backdropFilter: 'blur(12px)',
+                        justifyContent: 'center',
                         position: 'relative',
-                        zIndex: 10,
-                    }}
-                >
-                    {/* Avatar / indicador del sistema */}
-                    <div
-                        style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: '50%',
-                            flexShrink: 0,
-                            background: 'linear-gradient(135deg, var(--accent), var(--accent-d))',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            position: 'relative',
-                        }}
-                    >
-                        {/* Icono de pulmon / medico minimalista */}
+                        boxShadow: 'var(--shadow-accent)',
+                    }}>
                         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                            <path
-                                d="M7 2V7M4 7C4 9.2 2 10 2 12H6C6 10 7 9 7 7M10 7C10 9.2 12 10 12 12H8C8 10 7 9 7 7"
-                                stroke="white"
-                                strokeWidth="1.3"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                            />
+                            <path d="M7 2V7M4 7C4 9.2 2 10 2 12H6C6 10 7 9 7 7M10 7C10 9.2 12 10 12 12H8C8 10 7 9 7 7"
+                                  stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
-                        <div
-                            style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: '50%',
-                                background: 'var(--ok)',
-                                border: '2px solid var(--bg-0)',
-                                position: 'absolute',
-                                bottom: 0,
-                                right: 0,
-                            }}
-                        />
+                        {/* Indicador de estado en el avatar */}
+                        <div style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: '50%',
+                            background: 'var(--ok)',
+                            border: '1.5px solid var(--bg-0)',
+                            position: 'absolute',
+                            bottom: -1,
+                            right: -1,
+                        }} />
                     </div>
 
                     {/* Nombre y estado */}
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--t0)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        <div style={{
+                            fontSize: 12.5,
+                            fontWeight: 600,
+                            color: 'var(--t0)',
+                            letterSpacing: '-0.02em',
+                            lineHeight: 1,
+                        }}>
                             Sistema IA
                         </div>
-                        <div
-                            style={{
-                                fontFamily: 'var(--mono)',
-                                fontSize: 9,
-                                color: 'var(--t2)',
-                                letterSpacing: '0.06em',
-                            }}
-                        >
+                        <div style={{
+                            fontFamily: 'var(--mono)',
+                            fontSize: 8.5,
+                            color: 'var(--t2)',
+                            letterSpacing: '0.06em',
+                            lineHeight: 1,
+                        }}>
                             {status}
                         </div>
                     </div>
 
-                    {/* Badge de contexto */}
-                    <span
-                        style={{
-                            fontFamily: 'var(--mono)',
-                            fontSize: 8,
-                            letterSpacing: '0.08em',
-                            textTransform: 'uppercase',
-                            padding: '2px 9px',
-                            borderRadius: 'var(--r4)',
-                            border: '1px solid rgba(91,107,240,0.3)',
-                            background: 'rgba(91,107,240,0.07)',
-                            color: 'var(--accent)',
-                            cursor: 'default',
-                            whiteSpace: 'nowrap',
-                        }}
-                    >
-            carcinoma pulmonar
-          </span>
+                    {/* Badge de especialidad */}
+                    <div style={{
+                        fontFamily: 'var(--mono)',
+                        fontSize: 8,
+                        letterSpacing: '0.09em',
+                        textTransform: 'uppercase',
+                        padding: '3px 10px',
+                        borderRadius: 'var(--r4)',
+                        border: '1px solid var(--border-focus)',
+                        background: 'var(--accent-glow)',
+                        color: 'var(--accent-h)',
+                        cursor: 'default',
+                        whiteSpace: 'nowrap',
+                    }}>
+                        Carcinoma pulmonar
+                    </div>
 
                     <div style={{ flex: 1 }} />
 
-                    {/* Boton buscar en header */}
+                    {/* Botón buscar */}
                     <button
                         onClick={() => setSearchOpen(v => !v)}
                         title="Buscar (Ctrl+F)"
@@ -386,14 +307,26 @@ export function ChatShell() {
                             width: 30,
                             height: 30,
                             borderRadius: 'var(--r6)',
-                            background: searchOpen ? 'rgba(91,107,240,0.1)' : 'transparent',
-                            border: 'none',
+                            background: searchOpen ? 'var(--accent-glow)' : 'transparent',
+                            border: searchOpen ? '1px solid var(--border-focus)' : '1px solid transparent',
                             cursor: 'pointer',
-                            color: searchOpen ? 'var(--accent)' : 'var(--t2)',
+                            color: searchOpen ? 'var(--accent-h)' : 'var(--t2)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             transition: 'all var(--ta)',
+                        }}
+                        onMouseEnter={e => {
+                            if (!searchOpen) {
+                                const el = e.currentTarget as HTMLButtonElement
+                                el.style.color = 'var(--t0)'
+                                el.style.background = 'var(--bg-3)'
+                            }
+                        }}
+                        onMouseLeave={e => {
+                            const el = e.currentTarget as HTMLButtonElement
+                            el.style.color = searchOpen ? 'var(--accent-h)' : 'var(--t2)'
+                            el.style.background = searchOpen ? 'var(--accent-glow)' : 'transparent'
                         }}
                     >
                         <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
@@ -402,7 +335,7 @@ export function ChatShell() {
                         </svg>
                     </button>
 
-                    {/* Barra de busqueda superpuesta */}
+                    {/* SearchBar superpuesta */}
                     <SearchBar
                         open={searchOpen}
                         query={searchQuery}
@@ -413,35 +346,30 @@ export function ChatShell() {
                         onPrev={handleSearchPrev}
                         onClose={handleCloseSearch}
                     />
-                </div>
+                </header>
 
-                {/* Lista de mensajes */}
                 <MessageList messages={messages} isTyping={isTyping} />
-
-                {/* Barra de entrada */}
                 <InputBar onSend={handleSend} disabled={isTyping} />
             </main>
 
-            {/* Toast global */}
             <Toast message={toastMsg} visible={toastVisible} />
 
-            {/* Estilos de animacion inyectados inline para no depender de un archivo CSS extra */}
             <style>{`
-        @keyframes msg-in {
-          from { opacity: 0; transform: translateY(10px); }
-          to   { opacity: 1; transform: none; }
-        }
-        @keyframes t-bounce {
-          0%, 60%, 100% { transform: translateY(0) scale(1); opacity: 0.3; }
-          30%            { transform: translateY(-5px) scale(1.15); opacity: 1; }
-        }
-        @keyframes mic-pulse {
-          0%   { transform: scale(0.7); opacity: 0.7; }
-          100% { transform: scale(2);   opacity: 0;   }
-        }
-        .msg-wrap:hover .copy-btn { opacity: 1 !important; }
-        .msg-wrap:hover .msg-ts   { opacity: 1 !important; }
-      `}</style>
+                @keyframes msg-in {
+                    from { opacity: 0; transform: translateY(8px); }
+                    to   { opacity: 1; transform: none; }
+                }
+                @keyframes t-bounce {
+                    0%, 60%, 100% { transform: translateY(0) scale(1); opacity: 0.3; }
+                    30%           { transform: translateY(-5px) scale(1.2); opacity: 1; }
+                }
+                @keyframes mic-pulse {
+                    0%   { transform: scale(0.8); opacity: 0.6; }
+                    100% { transform: scale(2.2); opacity: 0;   }
+                }
+                .msg-wrap:hover .copy-btn { opacity: 1 !important; }
+                .msg-wrap:hover .msg-ts   { opacity: 1 !important; }
+            `}</style>
         </div>
     )
 }

@@ -16,21 +16,80 @@ interface PendingImage {
 
 export function InputBar({ onSend, disabled }: InputBarProps) {
     const [text, setText] = useState('')
-    // Por ahora se acepta cualquier imagen como adjunto.
-    // Cuando el backend soporte DICOM, aqui se cambiara el accept a
-    // ".dcm,image/*" y se validara el tipo antes de adjuntar.
     const [pendingImg, setPendingImg] = useState<PendingImage | null>(null)
     const [micActive, setMicActive] = useState(false)
+    const [focused, setFocused] = useState(false)
+    const [isDragging, setIsDragging] = useState(false)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const fileRef = useRef<HTMLInputElement>(null)
+    const dragCounterRef = useRef(0)
 
-    // Auto-resize del textarea
     useEffect(() => {
         const el = textareaRef.current
         if (!el) return
         el.style.height = 'auto'
         el.style.height = Math.min(el.scrollHeight, 110) + 'px'
     }, [text])
+
+    // ── Drag & drop global (toda la ventana) ──────────────────────────
+    useEffect(() => {
+        const onDragEnter = (e: DragEvent) => {
+            if (!e.dataTransfer?.types.includes('Files')) return
+            dragCounterRef.current++
+            setIsDragging(true)
+        }
+        const onDragLeave = () => {
+            dragCounterRef.current--
+            if (dragCounterRef.current === 0) setIsDragging(false)
+        }
+        const onDragOver = (e: DragEvent) => {
+            e.preventDefault()
+        }
+        const onDrop = (e: DragEvent) => {
+            e.preventDefault()
+            dragCounterRef.current = 0
+            setIsDragging(false)
+            const file = e.dataTransfer?.files?.[0]
+            if (file && file.type.startsWith('image/')) readImageFile(file)
+        }
+
+        window.addEventListener('dragenter', onDragEnter)
+        window.addEventListener('dragleave', onDragLeave)
+        window.addEventListener('dragover', onDragOver)
+        window.addEventListener('drop', onDrop)
+        return () => {
+            window.removeEventListener('dragenter', onDragEnter)
+            window.removeEventListener('dragleave', onDragLeave)
+            window.removeEventListener('dragover', onDragOver)
+            window.removeEventListener('drop', onDrop)
+        }
+    }, [])
+
+    // ── Lector de archivo compartido ──────────────────────────────────
+    function readImageFile(file: File) {
+        const reader = new FileReader()
+        reader.onload = ev => {
+            const d = ev.target?.result as string
+            const mime = file.type || 'image/jpeg'
+            const b64 = d.split(',')[1]
+            setPendingImg({ b64, mime, name: file.name, dataUrl: d })
+        }
+        reader.readAsDataURL(file)
+    }
+
+    // ── Ctrl+V ────────────────────────────────────────────────────────
+    function handlePaste(e: React.ClipboardEvent) {
+        const items = e.clipboardData?.items
+        if (!items) return
+        for (const item of Array.from(items)) {
+            if (item.type.startsWith('image/')) {
+                e.preventDefault()
+                const file = item.getAsFile()
+                if (file) readImageFile(file)
+                break
+            }
+        }
+    }
 
     function send() {
         const t = text.trim()
@@ -48,58 +107,88 @@ export function InputBar({ onSend, disabled }: InputBarProps) {
     function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
         const f = e.target.files?.[0]
         if (!f) return
-        const reader = new FileReader()
-        reader.onload = ev => {
-            const d = ev.target?.result as string
-            const mime = f.type || 'image/jpeg'
-            const b64 = d.split(',')[1]
-            setPendingImg({ b64, mime, name: f.name, dataUrl: d })
-        }
-        reader.readAsDataURL(f)
+        readImageFile(f)
         e.target.value = ''
     }
 
-    function handleMicClick() {
-        setMicActive(v => !v)
-    }
+    const canSend = (text.trim().length > 0 || !!pendingImg) && !disabled
 
     return (
-        <div
-            style={{
-                padding: '10px 18px 14px',
+        <>
+            {/* ── Overlay drag & drop ── */}
+            {isDragging && (
+                <div style={{
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 9999,
+                    background: 'rgba(9, 12, 24, 0.75)',
+                    backdropFilter: 'blur(4px)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    pointerEvents: 'none',
+                }}>
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '28px 40px',
+                        background: 'var(--bg-2)',
+                        border: '1.5px dashed var(--accent)',
+                        borderRadius: 'var(--r16)',
+                        boxShadow: '0 0 40px var(--accent-glow)',
+                        animation: 'drop-in 0.18s ease',
+                    }}>
+                        {/* Icono clip */}
+                        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style={{ color: 'var(--accent)' }}>
+                            <path d="M26 15L14.5 26.5C11.46 29.54 6.54 29.54 3.5 26.5C0.46 23.46 0.46 18.54 3.5 15.5L15 4C17.21 1.79 20.79 1.79 23 4C25.21 6.21 25.21 9.79 23 12L11.5 23.5C10.12 24.88 7.88 24.88 6.5 23.5C5.12 22.12 5.12 19.88 6.5 18.5L17 8"
+                                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span style={{
+                            fontFamily: 'var(--mono)',
+                            fontSize: 11,
+                            color: 'var(--accent)',
+                            letterSpacing: '0.06em',
+                            textTransform: 'uppercase',
+                        }}>
+                            Suelta para adjuntar imagen
+                        </span>
+                    </div>
+                </div>
+            )}
+
+            <div style={{
+                padding: '8px 16px 12px',
                 flexShrink: 0,
                 background: 'var(--bg-1)',
                 borderTop: '1px solid var(--border)',
-                position: 'relative',
-            }}
-        >
-            {/* Preview de imagen / radiografia adjunta */}
-            {pendingImg && (
-                <div
-                    style={{
+            }}>
+                {/* Preview imagen adjunta */}
+                {pendingImg && (
+                    <div style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 8,
+                        gap: 10,
                         padding: '7px 10px',
-                        marginBottom: 7,
+                        marginBottom: 8,
                         background: 'var(--bg-2)',
                         border: '1px solid var(--border)',
                         borderRadius: 'var(--r8)',
-                    }}
-                >
-                    <img
-                        src={pendingImg.dataUrl}
-                        alt={pendingImg.name}
-                        style={{
-                            width: 36,
-                            height: 36,
-                            objectFit: 'cover',
-                            borderRadius: 'var(--r6)',
-                            flexShrink: 0,
-                        }}
-                    />
-                    <span
-                        style={{
+                    }}>
+                        <img
+                            src={pendingImg.dataUrl}
+                            alt={pendingImg.name}
+                            style={{
+                                width: 34,
+                                height: 34,
+                                objectFit: 'cover',
+                                borderRadius: 'var(--r4)',
+                                flexShrink: 0,
+                                border: '1px solid var(--border-h)',
+                            }}
+                        />
+                        <span style={{
                             fontFamily: 'var(--mono)',
                             fontSize: 9,
                             color: 'var(--t1)',
@@ -107,209 +196,214 @@ export function InputBar({ onSend, disabled }: InputBarProps) {
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
-                        }}
-                    >
-            {pendingImg.name}
-          </span>
-                    <button
-                        onClick={() => setPendingImg(null)}
-                        style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'var(--t2)',
-                            cursor: 'pointer',
-                            padding: '3px',
-                            borderRadius: 'var(--r4)',
-                            lineHeight: 1,
-                            fontSize: 11,
-                            transition: 'color var(--ta)',
-                        }}
-                        onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--err)')}
-                        onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--t2)')}
-                    >
-                        <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                            <line x1="1" y1="1" x2="10" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                            <line x1="10" y1="1" x2="1" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                        </svg>
-                    </button>
-                </div>
-            )}
+                            letterSpacing: '0.02em',
+                        }}>
+                            {pendingImg.name}
+                        </span>
+                        <button
+                            onClick={() => setPendingImg(null)}
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: 'var(--t2)',
+                                cursor: 'pointer',
+                                padding: '4px',
+                                borderRadius: 'var(--r4)',
+                                lineHeight: 1,
+                                transition: 'color var(--ta)',
+                                display: 'flex',
+                                alignItems: 'center',
+                            }}
+                            onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--err)')}
+                            onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--t2)')}
+                        >
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                                <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                                <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                            </svg>
+                        </button>
+                    </div>
+                )}
 
-            {/* Pill de input */}
-            <div
-                style={{
+                {/* Contenedor principal del input */}
+                <div style={{
                     display: 'flex',
                     alignItems: 'flex-end',
-                    gap: 3,
+                    gap: 4,
                     background: 'var(--bg-2)',
-                    border: '1px solid var(--border-h)',
+                    border: `1px solid ${focused ? 'var(--border-focus)' : 'var(--border-h)'}`,
                     borderRadius: 'var(--r12)',
                     padding: '4px 5px',
-                    transition: 'border-color var(--ta), box-shadow var(--ta)',
-                }}
-                onFocus={() => {}}
-            >
-                {/* Microfono */}
-                <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
-                    {micActive && (
-                        <div
-                            style={{
+                    transition: 'border-color var(--ts), box-shadow var(--ts)',
+                    boxShadow: focused ? '0 0 0 3px var(--accent-glow)' : 'none',
+                }}>
+                    {/* Micrófono */}
+                    <div style={{ position: 'relative', width: 34, height: 34, flexShrink: 0 }}>
+                        {micActive && (
+                            <div style={{
                                 position: 'absolute',
-                                inset: -2,
+                                inset: -3,
                                 borderRadius: '50%',
-                                border: '1.5px solid rgba(91,107,240,0.4)',
+                                border: '1.5px solid var(--accent)',
                                 animation: 'mic-pulse 1.3s ease-out infinite',
                                 pointerEvents: 'none',
-                            }}
-                        />
-                    )}
-                    <button
-                        onClick={handleMicClick}
-                        title="Microfono"
+                                opacity: 0.5,
+                            }} />
+                        )}
+                        <IconBtn
+                            title="Micrófono"
+                            active={micActive}
+                            onClick={() => setMicActive(v => !v)}
+                            style={{ borderRadius: '50%', ...(micActive ? { background: 'var(--accent)', color: '#fff' } : {}) }}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                                <rect x="4.5" y="1" width="5" height="7.5" rx="2.5" stroke="currentColor" strokeWidth="1.4" />
+                                <path d="M2 7A5 5 0 0 0 12 7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                                <line x1="7" y1="12" x2="7" y2="13.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                            </svg>
+                        </IconBtn>
+                    </div>
+
+                    {/* Divider */}
+                    <div style={{ width: 1, height: 16, background: 'var(--border)', alignSelf: 'center', flexShrink: 0 }} />
+
+                    {/* Textarea */}
+                    <textarea
+                        ref={textareaRef}
+                        value={text}
+                        onChange={e => setText(e.target.value)}
+                        onFocus={() => setFocused(true)}
+                        onBlur={() => setFocused(false)}
+                        onPaste={handlePaste}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault()
+                                if (canSend) send()
+                            }
+                        }}
+                        placeholder={
+                            disabled ? 'Esperando respuesta...'
+                                : pendingImg ? 'Descripción de la imagen (opcional)...'
+                                    : 'Escribe un mensaje clínico...'
+                        }
+                        disabled={disabled}
+                        rows={1}
                         style={{
-                            position: 'relative',
-                            zIndex: 1,
-                            width: 36,
-                            height: 36,
-                            borderRadius: '50%',
-                            background: micActive ? 'var(--accent)' : 'transparent',
+                            flex: 1,
+                            background: 'transparent',
                             border: 'none',
-                            cursor: 'pointer',
-                            color: micActive ? '#fff' : 'var(--t2)',
+                            outline: 'none',
+                            color: disabled ? 'var(--t2)' : 'var(--t0)',
+                            fontFamily: 'var(--sans)',
+                            fontSize: 13,
+                            letterSpacing: '-0.01em',
+                            padding: '7px 6px',
+                            caretColor: 'var(--accent)',
+                            resize: 'none',
+                            minHeight: 34,
+                            maxHeight: 110,
+                            overflowY: 'auto',
+                            lineHeight: 1.55,
+                            alignSelf: 'center',
+                            scrollbarWidth: 'none',
+                        }}
+                    />
+
+                    {/* Divider */}
+                    <div style={{ width: 1, height: 16, background: 'var(--border)', alignSelf: 'center', flexShrink: 0 }} />
+
+                    {/* Adjuntar */}
+                    <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
+                    <IconBtn title="Adjuntar imagen (o arrastra / Ctrl+V)" onClick={() => fileRef.current?.click()}>
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <path d="M12 9V12C12 12.55 11.55 13 11 13H3C2.45 13 2 12.55 2 12V9"
+                                  stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                            <line x1="7" y1="1.5" x2="7" y2="9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                            <path d="M4.5 4L7 1.5L9.5 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                    </IconBtn>
+
+                    {/* Enviar */}
+                    <button
+                        onClick={() => canSend && send()}
+                        title="Enviar (Enter)"
+                        style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: '50%',
+                            flexShrink: 0,
+                            background: canSend ? 'var(--accent)' : 'var(--bg-3)',
+                            border: canSend ? 'none' : '1px solid var(--border)',
+                            cursor: canSend ? 'pointer' : 'default',
+                            color: canSend ? '#fff' : 'var(--t3)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            transition: 'all var(--ta)',
-                            boxShadow: micActive ? '0 0 14px rgba(91,107,240,0.5)' : 'none',
+                            transition: 'all var(--ts)',
+                            alignSelf: 'flex-end',
+                            boxShadow: canSend ? 'var(--shadow-accent)' : 'none',
+                        }}
+                        onMouseEnter={e => {
+                            if (canSend) {
+                                const el = e.currentTarget as HTMLButtonElement
+                                el.style.background = 'var(--accent-h)'
+                                el.style.transform = 'scale(1.05)'
+                            }
+                        }}
+                        onMouseLeave={e => {
+                            const el = e.currentTarget as HTMLButtonElement
+                            el.style.background = canSend ? 'var(--accent)' : 'var(--bg-3)'
+                            el.style.transform = 'none'
                         }}
                     >
-                        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                            <rect x="5" y="1" width="5" height="8" rx="2.5" stroke="currentColor" strokeWidth="1.4" />
-                            <path d="M2.5 7.5A5 5 0 0 0 12.5 7.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                            <line x1="7.5" y1="12.5" x2="7.5" y2="14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                            <path d="M6.5 11V2M6.5 2L3 5.5M6.5 2L10 5.5"
+                                  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                     </button>
                 </div>
-
-                {/* Separador */}
-                <div style={{ width: 1, height: 16, background: 'var(--border)', alignSelf: 'center', flexShrink: 0 }} />
-
-                {/* Textarea */}
-                <textarea
-                    ref={textareaRef}
-                    value={text}
-                    onChange={e => setText(e.target.value)}
-                    onKeyDown={e => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault()
-                            if ((text.trim() || pendingImg) && !disabled) send()
-                        }
-                    }}
-                    placeholder={pendingImg ? 'Descripcion de la imagen (opcional)...' : 'Escribe un mensaje...'}
-                    disabled={disabled}
-                    rows={1}
-                    style={{
-                        flex: 1,
-                        background: 'transparent',
-                        border: 'none',
-                        outline: 'none',
-                        color: disabled ? 'rgba(221,224,240,0.3)' : 'var(--t0)',
-                        fontFamily: 'var(--sans)',
-                        fontSize: 13.5,
-                        padding: '7px 6px',
-                        caretColor: 'var(--accent)',
-                        resize: 'none',
-                        minHeight: 36,
-                        maxHeight: 110,
-                        overflowY: 'auto',
-                        lineHeight: 1.6,
-                        alignSelf: 'center',
-                        scrollbarWidth: 'none',
-                    }}
-                />
-
-                {/* Separador */}
-                <div style={{ width: 1, height: 16, background: 'var(--border)', alignSelf: 'center', flexShrink: 0 }} />
-
-                {/* Adjuntar imagen / radiografia */}
-                <input
-                    ref={fileRef}
-                    type="file"
-                    accept="image/*"
-                    style={{ display: 'none' }}
-                    onChange={handleFileChange}
-                />
-                <button
-                    onClick={() => fileRef.current?.click()}
-                    title="Adjuntar imagen"
-                    style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: '50%',
-                        background: 'transparent',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: 'var(--t2)',
-                        flexShrink: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'all var(--ta)',
-                        alignSelf: 'flex-end',
-                    }}
-                    onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--t0)')}
-                    onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--t2)')}
-                >
-                    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                        <path
-                            d="M13 9.5V12.5C13 13.05 12.55 13.5 12 13.5H3C2.45 13.5 2 13.05 2 12.5V9.5"
-                            stroke="currentColor"
-                            strokeWidth="1.4"
-                            strokeLinecap="round"
-                        />
-                        <line x1="7.5" y1="1.5" x2="7.5" y2="9.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                        <path d="M4.5 4.5L7.5 1.5L10.5 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                </button>
-
-                {/* Enviar */}
-                <button
-                    onClick={() => { if ((text.trim() || pendingImg) && !disabled) send() }}
-                    title="Enviar (Enter)"
-                    style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: '50%',
-                        flexShrink: 0,
-                        background: 'var(--accent)',
-                        border: 'none',
-                        cursor: disabled ? 'not-allowed' : 'pointer',
-                        color: '#fff',
-                        fontSize: 14,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 2px 10px rgba(91,107,240,0.4)',
-                        transition: 'all var(--ta)',
-                        alignSelf: 'flex-end',
-                        opacity: disabled ? 0.5 : 1,
-                    }}
-                    onMouseEnter={e => {
-                        if (!disabled) {
-                            ;(e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-h)'
-                            ;(e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.04)'
-                        }
-                    }}
-                    onMouseLeave={e => {
-                        ;(e.currentTarget as HTMLButtonElement).style.background = 'var(--accent)'
-                        ;(e.currentTarget as HTMLButtonElement).style.transform = 'none'
-                    }}
-                >
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        <path d="M7 12V2M7 2L3 6M7 2L11 6" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                </button>
             </div>
-        </div>
+        </>
+    )
+}
+
+function IconBtn({
+                     title, onClick, children, active, style
+                 }: {
+    title: string
+    onClick: () => void
+    children: React.ReactNode
+    active?: boolean
+    style?: React.CSSProperties
+}) {
+    return (
+        <button
+            onClick={onClick}
+            title={title}
+            style={{
+                width: 34,
+                height: 34,
+                borderRadius: '50%',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: active ? '#fff' : 'var(--t2)',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all var(--ta)',
+                alignSelf: 'flex-end',
+                ...style,
+            }}
+            onMouseEnter={e => {
+                if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--t0)'
+            }}
+            onMouseLeave={e => {
+                if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--t2)'
+            }}
+        >
+            {children}
+        </button>
     )
 }

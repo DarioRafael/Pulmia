@@ -20,7 +20,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     function handleCopy() {
         navigator.clipboard?.writeText(message.content)
         setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
+        setTimeout(() => setCopied(false), 1600)
     }
 
     return (
@@ -30,46 +30,51 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: isUser ? 'flex-end' : 'flex-start',
-                animation: 'msg-in 0.22s ease both',
+                animation: 'msg-in 0.2s ease both',
                 position: 'relative',
+                gap: 4,
             }}
         >
-            {/* Remitente */}
-            <div
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    marginBottom: 4,
-                    padding: '0 2px',
-                    fontFamily: 'var(--mono)',
-                    fontSize: 8,
-                    letterSpacing: '0.10em',
-                    textTransform: 'uppercase',
-                    color: isUser ? 'var(--t2)' : 'var(--accent)',
-                    opacity: isUser ? 1 : 0.8,
-                }}
-            >
-        <span
-            style={{
-                width: 3,
-                height: 3,
-                borderRadius: '50%',
-                background: 'currentColor',
-                display: 'inline-block',
-            }}
-        />
-                {isUser ? 'medico' : 'sistema ia'}
+            {/* Etiqueta del remitente */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '0 4px',
+                fontFamily: 'var(--mono)',
+                fontSize: 8,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: isUser ? 'var(--t2)' : 'var(--accent)',
+            }}>
+                {!isUser && (
+                    <span style={{
+                        width: 14,
+                        height: 14,
+                        borderRadius: 'var(--r3)',
+                        background: 'var(--accent)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                    }}>
+                        <svg width="8" height="8" viewBox="0 0 14 14" fill="none">
+                            <path d="M7 2V7M4 7C4 9.2 2 10 2 12H6C6 10 7 9 7 7M10 7C10 9.2 12 10 12 12H8C8 10 7 9 7 7"
+                                  stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                    </span>
+                )}
+                {isUser ? 'Médico' : 'Sistema IA'}
             </div>
 
             {/* Burbuja */}
             <div
                 className={`bubble ${message.isStreaming ? 'streaming' : ''}`}
                 style={{
-                    maxWidth: isUser ? '68%' : '78%',
-                    padding: isUser ? '10px 15px' : '12px 16px',
+                    maxWidth: isUser ? '66%' : '76%',
+                    padding: isUser ? '9px 14px' : '11px 15px',
                     fontSize: 13.5,
-                    lineHeight: isUser ? 1.7 : 1.8,
+                    lineHeight: isUser ? 1.65 : 1.75,
                     wordBreak: 'break-word',
                     background: isUser ? 'var(--bg-3)' : 'var(--bg-2)',
                     border: isUser
@@ -77,17 +82,17 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                         : '1px solid var(--border)',
                     borderLeft: isUser ? undefined : '2px solid var(--accent)',
                     borderRadius: isUser
-                        ? 'var(--r12) var(--r12) 3px var(--r12)'
-                        : '3px var(--r12) var(--r12) var(--r12)',
+                        ? 'var(--r12) var(--r12) var(--r4) var(--r12)'
+                        : 'var(--r4) var(--r12) var(--r12) var(--r12)',
                     color: 'var(--t0)',
                     position: 'relative',
                     transition: 'border-color var(--ta)',
+                    boxShadow: isUser ? 'none' : 'var(--shadow-sm)',
                 }}
             >
-                {/* Radiografia adjunta — por ahora se muestran imagenes generales;
-            cuando el backend soporte DICOM esta seccion renderizara el visor DICOM */}
+                {/* Imagen adjunta */}
                 {message.imageDataUrl && (
-                    <div>
+                    <div style={{ marginBottom: 8 }}>
                         <img
                             src={message.imageDataUrl}
                             alt={message.imageCaption || 'Imagen adjunta'}
@@ -95,32 +100,37 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                             onClick={() => window.open(message.imageDataUrl, '_blank')}
                         />
                         {message.imageCaption && (
-                            <div style={{ fontSize: 12, color: 'var(--t1)', marginTop: 2 }}>
+                            <div style={{
+                                fontSize: 11,
+                                color: 'var(--t1)',
+                                fontFamily: 'var(--mono)',
+                                letterSpacing: '0.02em',
+                            }}>
                                 {message.imageCaption}
                             </div>
                         )}
                     </div>
                 )}
 
-                {/* Contenido de texto */}
+                {/* Contenido */}
                 {isUser ? (
-                    <span>{message.content}</span>
+                    <span style={{ letterSpacing: '-0.01em' }}>{message.content}</span>
                 ) : (
                     <span dangerouslySetInnerHTML={{ __html: md(message.content) }} />
                 )}
 
-                {/* Boton copiar — solo en mensajes de IA */}
+                {/* Botón copiar */}
                 {!isUser && !message.isStreaming && (
                     <button
                         onClick={handleCopy}
+                        className="copy-btn"
                         style={{
                             position: 'absolute',
                             top: 8,
                             right: 8,
-                            background: 'var(--bg-3)',
-                            border: '1px solid var(--border)',
+                            background: copied ? 'var(--ok-bg)' : 'var(--bg-0)',
+                            border: `1px solid ${copied ? 'rgba(46,184,122,0.3)' : 'var(--border-h)'}`,
                             color: copied ? 'var(--ok)' : 'var(--t2)',
-                            borderColor: copied ? 'rgba(76,175,135,0.4)' : 'var(--border)',
                             fontFamily: 'var(--mono)',
                             fontSize: 8,
                             letterSpacing: '0.06em',
@@ -130,9 +140,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                             opacity: 0,
                             transition: 'all var(--ta)',
                         }}
-                        className="copy-btn"
                     >
-                        {copied ? 'copiado' : 'copiar'}
+                        {copied ? '✓ copiado' : 'copiar'}
                     </button>
                 )}
             </div>
@@ -144,10 +153,10 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                     fontFamily: 'var(--mono)',
                     fontSize: 7.5,
                     color: 'var(--t3)',
-                    marginTop: 4,
-                    padding: '0 3px',
+                    padding: '0 4px',
                     opacity: 0,
                     transition: 'opacity 0.15s',
+                    letterSpacing: '0.04em',
                 }}
             >
                 {timestamp}

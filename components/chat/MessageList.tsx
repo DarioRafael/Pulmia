@@ -13,15 +13,12 @@ interface MessageListProps {
 export function MessageList({ messages, isTyping }: MessageListProps) {
     const bottomRef = useRef<HTMLDivElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
-    const showScrollBtnRef = useRef(false)
 
-    // Auto-scroll al fondo cuando llegan mensajes nuevos o streaming
     useEffect(() => {
         const container = containerRef.current
         if (!container) return
-        const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
-        // Solo auto-scroll si el usuario ya estaba cerca del fondo
-        if (distFromBottom < 120) {
+        const dist = container.scrollHeight - container.scrollTop - container.clientHeight
+        if (dist < 140) {
             bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
         }
     }, [messages, isTyping])
@@ -38,16 +35,16 @@ export function MessageList({ messages, isTyping }: MessageListProps) {
                 style={{
                     flex: 1,
                     overflowY: 'auto',
-                    padding: '20px 18px 12px',
+                    padding: '22px 20px 16px',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 16,
+                    gap: 14,
                 }}
                 onScroll={e => {
                     const el = e.currentTarget
                     const d = el.scrollHeight - el.scrollTop - el.clientHeight
                     const btn = document.getElementById('scroll-btn')
-                    if (btn) btn.style.display = d > 120 ? 'flex' : 'none'
+                    if (btn) btn.style.display = d > 140 ? 'flex' : 'none'
                 }}
             >
                 {messages.map(msg => (
@@ -59,40 +56,43 @@ export function MessageList({ messages, isTyping }: MessageListProps) {
                 <div ref={bottomRef} />
             </div>
 
-            {/* Boton bajar al fondo */}
+            {/* Botón volver al fondo */}
             <button
                 id="scroll-btn"
                 onClick={scrollToBottom}
                 style={{
                     display: 'none',
                     position: 'absolute',
-                    right: 18,
+                    right: 20,
                     bottom: 16,
-                    width: 32,
-                    height: 32,
+                    width: 30,
+                    height: 30,
                     borderRadius: '50%',
-                    background: 'var(--bg-3)',
+                    background: 'var(--bg-2)',
                     border: '1px solid var(--border-h)',
                     color: 'var(--t1)',
-                    fontSize: 13,
                     cursor: 'pointer',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                    boxShadow: 'var(--shadow-md)',
                     zIndex: 30,
-                    transition: 'transform var(--ta)',
+                    transition: 'all var(--ta)',
                 }}
                 onMouseEnter={e => {
-                    ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--accent)'
-                    ;(e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)'
+                    const el = e.currentTarget as HTMLButtonElement
+                    el.style.color = 'var(--accent-h)'
+                    el.style.borderColor = 'var(--border-focus)'
+                    el.style.transform = 'translateY(-2px)'
                 }}
                 onMouseLeave={e => {
-                    ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--t1)'
-                    ;(e.currentTarget as HTMLButtonElement).style.transform = 'none'
+                    const el = e.currentTarget as HTMLButtonElement
+                    el.style.color = 'var(--t1)'
+                    el.style.borderColor = 'var(--border-h)'
+                    el.style.transform = 'none'
                 }}
             >
-                <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                    <path d="M2 4.5L6.5 9L11 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
             </button>
         </div>

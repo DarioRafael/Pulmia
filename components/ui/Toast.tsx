@@ -7,7 +7,7 @@ export function useToast() {
     const [visible, setVisible] = useState(false)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    const showToast = useCallback((msg: string, duration = 2400) => {
+    const showToast = useCallback((msg: string, duration = 2200) => {
         setMessage(msg)
         setVisible(true)
         if (timerRef.current) clearTimeout(timerRef.current)
@@ -24,29 +24,29 @@ interface ToastProps {
 
 export function Toast({ message, visible }: ToastProps) {
     return (
-        <div
-            style={{
-                position: 'fixed',
-                bottom: 78,
-                left: '50%',
-                transform: visible ? 'translateX(-50%) translateY(0)' : 'translateX(-50%) translateY(10px)',
-                background: 'var(--bg-3)',
-                border: '1px solid var(--border-h)',
-                backdropFilter: 'blur(16px)',
-                color: 'var(--t0)',
-                fontFamily: 'var(--mono)',
-                fontSize: 10,
-                letterSpacing: '0.04em',
-                padding: '7px 20px',
-                borderRadius: 'var(--r6)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-                opacity: visible ? 1 : 0,
-                transition: 'opacity 0.2s, transform 0.2s',
-                pointerEvents: 'none',
-                zIndex: 500,
-                whiteSpace: 'nowrap',
-            }}
-        >
+        <div style={{
+            position: 'fixed',
+            bottom: 80,
+            left: '50%',
+            transform: visible
+                ? 'translateX(-50%) translateY(0) scale(1)'
+                : 'translateX(-50%) translateY(8px) scale(0.97)',
+            background: 'var(--bg-3)',
+            border: '1px solid var(--border-h)',
+            backdropFilter: 'blur(20px)',
+            color: 'var(--t0)',
+            fontFamily: 'var(--mono)',
+            fontSize: 10,
+            letterSpacing: '0.04em',
+            padding: '6px 18px',
+            borderRadius: 'var(--r6)',
+            boxShadow: 'var(--shadow-md)',
+            opacity: visible ? 1 : 0,
+            transition: 'opacity 0.18s ease, transform 0.18s ease',
+            pointerEvents: 'none',
+            zIndex: 500,
+            whiteSpace: 'nowrap',
+        }}>
             {message}
         </div>
     )

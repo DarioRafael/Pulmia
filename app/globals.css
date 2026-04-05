@@ -1,47 +1,86 @@
 @import "tailwindcss";
 
 :root {
-  --bg-0: #0b0d16;
-  --bg-1: #0f1120;
-  --bg-2: #141728;
-  --bg-3: #1a1e30;
-  --border: #1e2238;
-  --border-h: #2a2e48;
-  --accent: #5b6bf0;
-  --accent-h: #7a88f5;
-  --accent-d: #3a49c8;
-  --t0: #dde0f0;
-  --t1: #8890b0;
-  --t2: #50557a;
-  --t3: #252840;
-  --ok: #4caf87;
-  --warn: #d4a843;
-  --err: #c45f5f;
-  --sans: 'Inter', system-ui, sans-serif;
-  --mono: 'JetBrains Mono', monospace;
+  /* ── Fondos — azul pizarra clínico profundo ── */
+  --bg-0: #060810;
+  --bg-1: #090c18;
+  --bg-2: #0d1020;
+  --bg-3: #111428;
+  --bg-glass: rgba(13, 16, 32, 0.85);
+
+  /* ── Bordes con tinte azul frío ── */
+  --border: #161c34;
+  --border-h: #1f2844;
+  --border-focus: rgba(37, 99, 200, 0.5);
+
+  /* ── Acento — azul cobalto de confianza clínica ── */
+  --accent: #2b6be0;
+  --accent-h: #4a87f0;
+  --accent-d: #1a50b8;
+  --accent-glow: rgba(43, 107, 224, 0.18);
+
+  /* ── Texto con temperatura fría ── */
+  --t0: #e8edf8;
+  --t1: #6a7a9e;
+  --t2: #323d58;
+  --t3: #181f35;
+
+  /* ── Estados clínicos ── */
+  --ok: #2eb87a;
+  --ok-bg: rgba(46, 184, 122, 0.1);
+  --warn: #e8a020;
+  --warn-bg: rgba(232, 160, 32, 0.1);
+  --err: #d84040;
+  --err-bg: rgba(216, 64, 64, 0.1);
+
+  /* ── Tipografía ── */
+  --sans: 'DM Sans', 'Inter', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+  --display: 'DM Sans', system-ui, sans-serif;
+
+  /* ── Radios ── */
+  --r3: 3px;
   --r4: 4px;
   --r6: 6px;
   --r8: 8px;
   --r12: 12px;
   --r16: 16px;
-  --ta: 0.15s ease;
-  --ts: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Transiciones ── */
+  --ta: 0.12s ease;
+  --ts: 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Sombras ── */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.3);
+  --shadow-accent: 0 0 20px rgba(43, 107, 224, 0.25);
 }
 
 [data-theme='light'] {
-  --bg-0: #f2f4fa;
-  --bg-1: #f9fafe;
+  --bg-0: #eef1f8;
+  --bg-1: #f5f7fc;
   --bg-2: #ffffff;
   --bg-3: #ffffff;
-  --border: #dde0eb;
-  --border-h: #c5c9db;
-  --t0: #1a1d2e;
-  --t1: #5c6280;
-  --t2: #9499b0;
-  --t3: #d8dae8;
-  --accent: #4a5ae0;
+  --bg-glass: rgba(255, 255, 255, 0.9);
+  --border: #d4d9ec;
+  --border-h: #b8c0d8;
+  --border-focus: rgba(37, 99, 200, 0.4);
+  --t0: #0f1628;
+  --t1: #4a5575;
+  --t2: #9099b5;
+  --t3: #d0d5e8;
+  --accent: #1a50b8;
+  --accent-h: #2b6be0;
+  --accent-d: #0e3a8c;
+  --accent-glow: rgba(26, 80, 184, 0.1);
+  --ok: #1a9e60;
+  --warn: #b87010;
+  --err: #b02828;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.1), 0 2px 6px rgba(0,0,0,0.06);
 }
 
+/* ── Reset ─────────────────────────────────────────────────────────── */
 *,
 *::before,
 *::after {
@@ -61,106 +100,152 @@ body {
   font-size: 13.5px;
   font-weight: 400;
   line-height: 1.6;
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar global */
+/* ── Scrollbar refinado ─────────────────────────────────────────────── */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border-h) transparent;
 }
-*::-webkit-scrollbar {
-  width: 3px;
-}
+*::-webkit-scrollbar { width: 3px; height: 3px; }
+*::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
   background: var(--border-h);
   border-radius: 2px;
 }
-
-/* Search highlight */
-mark {
-  background: rgba(91, 107, 240, 0.25);
-  border-radius: 3px;
-  padding: 0 1px;
-  color: inherit;
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--t2);
 }
 
-/* Imagen adjunta en burbuja — por ahora imagenes generales,
-   se restringira a radiografias DICOM cuando el backend lo soporte */
+/* ── Search highlight ───────────────────────────────────────────────── */
+mark {
+  background: rgba(43, 107, 224, 0.2);
+  border-radius: 2px;
+  padding: 1px 2px;
+  color: var(--accent-h);
+  font-weight: 500;
+}
+
+/* ── Imagen en burbuja ──────────────────────────────────────────────── */
 .bubble-img {
-  max-width: 190px;
-  max-height: 150px;
-  border-radius: var(--r8);
+  max-width: 200px;
+  max-height: 160px;
+  border-radius: var(--r6);
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   cursor: zoom-in;
-  border: 1px solid var(--border);
-  transition: transform var(--ta);
+  border: 1px solid var(--border-h);
+  transition: transform var(--ta), border-color var(--ta);
+  object-fit: cover;
 }
 .bubble-img:hover {
-  transform: scale(1.02);
+  transform: scale(1.015);
+  border-color: var(--accent);
 }
 
-/* Bubble markdown styles */
-.bubble strong,
-.bubble b {
+/* ── Markdown en burbujas ───────────────────────────────────────────── */
+.bubble strong, .bubble b {
   font-weight: 600;
+  color: var(--t0);
 }
-.bubble em,
-.bubble i {
+.bubble em, .bubble i {
   font-style: italic;
   color: var(--t1);
 }
 .bubble code {
   font-family: var(--mono);
   font-size: 11px;
-  background: rgba(91, 107, 240, 0.1);
-  border: 1px solid rgba(91, 107, 240, 0.2);
-  border-radius: var(--r4);
-  padding: 1px 5px;
+  background: var(--accent-glow);
+  border: 1px solid var(--border-focus);
+  border-radius: var(--r3);
+  padding: 1px 6px;
+  letter-spacing: 0;
 }
 .bubble pre {
   font-family: var(--mono);
   font-size: 11px;
   background: var(--bg-0);
   border: 1px solid var(--border);
-  border-radius: var(--r8);
-  padding: 10px 14px;
+  border-radius: var(--r6);
+  padding: 12px 16px;
   overflow-x: auto;
-  margin-top: 8px;
-  line-height: 1.6;
+  margin-top: 10px;
+  line-height: 1.7;
+  letter-spacing: 0;
 }
-.bubble ul,
-.bubble ol {
-  padding-left: 16px;
-  margin-top: 4px;
+.bubble ul, .bubble ol {
+  padding-left: 18px;
+  margin-top: 6px;
 }
 .bubble li {
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+  color: var(--t0);
+}
+.bubble p + p {
+  margin-top: 8px;
+}
+.bubble h3, .bubble h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t0);
+  margin-top: 12px;
+  margin-bottom: 4px;
+  letter-spacing: -0.02em;
 }
 
-/* Search match outline */
+/* ── Search match outline ───────────────────────────────────────────── */
 .bubble.search-match {
-  outline: 1.5px solid rgba(91, 107, 240, 0.4);
-  outline-offset: 2px;
+  outline: 1px solid rgba(43, 107, 224, 0.35);
+  outline-offset: 3px;
+  border-radius: var(--r8);
 }
 
-/* Streaming cursor */
+/* ── Streaming cursor ───────────────────────────────────────────────── */
 .bubble.streaming::after {
   content: '▋';
   display: inline-block;
   color: var(--accent);
-  animation: blink 0.65s step-end infinite;
+  animation: blink 0.7s step-end infinite;
   margin-left: 2px;
-  font-size: 0.8em;
+  font-size: 0.75em;
+  vertical-align: baseline;
 }
 
+/* ── Divider clínico para separar secciones de fecha ───────────────── */
+.msg-date-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  color: var(--t2);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.msg-date-divider::before,
+.msg-date-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── Animaciones ────────────────────────────────────────────────────── */
 @keyframes blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0;
-  }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes mic-pulse {
+  0%   { transform: scale(1);   opacity: 0.5; }
+  100% { transform: scale(1.6); opacity: 0;   }
+}
+
+@keyframes drop-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1);    }
 }

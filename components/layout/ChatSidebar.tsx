@@ -20,48 +20,55 @@ export function ChatSidebar({ open, chats, activeChatId, onSelectChat, onNewChat
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
-                width: open ? 280 : 0,
+                width: open ? 272 : 0,
                 flexShrink: 0,
                 transition: 'width var(--ts)',
             }}
         >
-            <div style={{ width: 280, height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ width: 272, height: '100%', display: 'flex', flexDirection: 'column' }}>
+
                 {/* Cabecera */}
                 <div
                     style={{
-                        padding: '16px 14px 12px',
+                        padding: '14px 14px 12px',
                         borderBottom: '1px solid var(--border)',
                         flexShrink: 0,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
+                        gap: 8,
                     }}
                 >
                     <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--t0)' }}>Sesiones</div>
-                        <div
-                            style={{
-                                fontFamily: 'var(--mono)',
-                                fontSize: 9,
-                                color: 'var(--t2)',
-                                marginTop: 2,
-                                letterSpacing: '0.08em',
-                            }}
-                        >
-                            Carcinoma pulmonar · IA
+                        <div style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: 'var(--t0)',
+                            letterSpacing: '-0.01em',
+                        }}>
+                            Sesiones clínicas
+                        </div>
+                        <div style={{
+                            fontFamily: 'var(--mono)',
+                            fontSize: 9,
+                            color: 'var(--t2)',
+                            marginTop: 3,
+                            letterSpacing: '0.07em',
+                            textTransform: 'uppercase',
+                        }}>
+                            Carcinoma pulmonar
                         </div>
                     </div>
 
-                    {/* Boton nueva sesion */}
                     <button
                         onClick={onNewChat}
-                        title="Nueva sesion"
+                        title="Nueva sesión"
                         style={{
-                            width: 28,
-                            height: 28,
+                            width: 26,
+                            height: 26,
                             borderRadius: 'var(--r6)',
                             background: 'transparent',
-                            border: '1px solid var(--border)',
+                            border: '1px solid var(--border-h)',
                             cursor: 'pointer',
                             color: 'var(--t2)',
                             display: 'flex',
@@ -71,38 +78,62 @@ export function ChatSidebar({ open, chats, activeChatId, onSelectChat, onNewChat
                             transition: 'all var(--ta)',
                         }}
                         onMouseEnter={e => {
-                            ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--accent)'
-                            ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(91,107,240,0.4)'
+                            const el = e.currentTarget as HTMLButtonElement
+                            el.style.color = 'var(--accent-h)'
+                            el.style.borderColor = 'var(--border-focus)'
+                            el.style.background = 'var(--accent-glow)'
                         }}
                         onMouseLeave={e => {
-                            ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--t2)'
-                            ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)'
+                            const el = e.currentTarget as HTMLButtonElement
+                            el.style.color = 'var(--t2)'
+                            el.style.borderColor = 'var(--border-h)'
+                            el.style.background = 'transparent'
                         }}
                     >
-                        {/* Icono + */}
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                            <line x1="7" y1="2" x2="7" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                            <line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <line x1="6" y1="1.5" x2="6" y2="10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                            <line x1="1.5" y1="6" x2="10.5" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                         </svg>
                     </button>
                 </div>
 
-                {/* Lista de chats */}
+                {/* Lista */}
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                     {chats.length === 0 ? (
-                        <div
-                            style={{
-                                padding: '24px 14px',
+                        <div style={{
+                            padding: '32px 16px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: 8,
+                        }}>
+                            <div style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: '50%',
+                                border: '1px solid var(--border-h)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: 'var(--t2)',
+                            }}>
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 3v5l3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                                    <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4" />
+                                </svg>
+                            </div>
+                            <div style={{
                                 fontFamily: 'var(--mono)',
-                                fontSize: 10,
+                                fontSize: 9,
                                 color: 'var(--t2)',
                                 textAlign: 'center',
-                                lineHeight: 1.8,
-                            }}
-                        >
-                            Sin sesiones previas.
-                            <br />
-                            Crea una nueva para empezar.
+                                lineHeight: 1.9,
+                                letterSpacing: '0.05em',
+                            }}>
+                                SIN SESIONES PREVIAS
+                                <br />
+                                <span style={{ color: 'var(--t3)' }}>Crea una nueva para empezar</span>
+                            </div>
                         </div>
                     ) : (
                         chats.map(chat => (
@@ -116,17 +147,30 @@ export function ChatSidebar({ open, chats, activeChatId, onSelectChat, onNewChat
                     )}
                 </div>
 
-                <div
-                    style={{
-                        padding: '10px 14px',
-                        borderTop: '1px solid var(--border)',
+                {/* Footer */}
+                <div style={{
+                    padding: '8px 14px',
+                    borderTop: '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                }}>
+                    <div style={{
+                        width: 4,
+                        height: 4,
+                        borderRadius: '50%',
+                        background: 'var(--ok)',
+                        flexShrink: 0,
+                    }} />
+                    <span style={{
                         fontFamily: 'var(--mono)',
                         fontSize: 9,
-                        color: 'var(--t3)',
-                        textAlign: 'center',
-                    }}
-                >
-                    Sistema IA · Carcinoma Pulmonar
+                        color: 'var(--t2)',
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                    }}>
+                        Sistema IA · Oncología
+                    </span>
                 </div>
             </div>
         </aside>
