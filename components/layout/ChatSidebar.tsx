@@ -48,16 +48,6 @@ export function ChatSidebar({ open, chats, activeChatId, onSelectChat, onNewChat
                         }}>
                             Sesiones clínicas
                         </div>
-                        <div style={{
-                            fontFamily: 'var(--mono)',
-                            fontSize: 9,
-                            color: 'var(--t2)',
-                            marginTop: 3,
-                            letterSpacing: '0.07em',
-                            textTransform: 'uppercase',
-                        }}>
-                            Carcinoma pulmonar
-                        </div>
                     </div>
 
                     <button
@@ -145,32 +135,6 @@ export function ChatSidebar({ open, chats, activeChatId, onSelectChat, onNewChat
                             />
                         ))
                     )}
-                </div>
-
-                {/* Footer */}
-                <div style={{
-                    padding: '8px 14px',
-                    borderTop: '1px solid var(--border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                }}>
-                    <div style={{
-                        width: 4,
-                        height: 4,
-                        borderRadius: '50%',
-                        background: 'var(--ok)',
-                        flexShrink: 0,
-                    }} />
-                    <span style={{
-                        fontFamily: 'var(--mono)',
-                        fontSize: 9,
-                        color: 'var(--t2)',
-                        letterSpacing: '0.06em',
-                        textTransform: 'uppercase',
-                    }}>
-                        Sistema IA · Oncología
-                    </span>
                 </div>
             </div>
         </aside>

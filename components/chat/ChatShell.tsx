@@ -245,17 +245,7 @@ export function ChatShell() {
                             <path d="M7 2V7M4 7C4 9.2 2 10 2 12H6C6 10 7 9 7 7M10 7C10 9.2 12 10 12 12H8C8 10 7 9 7 7"
                                   stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
-                        {/* Indicador de estado en el avatar */}
-                        <div style={{
-                            width: 7,
-                            height: 7,
-                            borderRadius: '50%',
-                            background: 'var(--ok)',
-                            border: '1.5px solid var(--bg-0)',
-                            position: 'absolute',
-                            bottom: -1,
-                            right: -1,
-                        }} />
+
                     </div>
 
                     {/* Nombre y estado */}
@@ -280,22 +270,6 @@ export function ChatShell() {
                         </div>
                     </div>
 
-                    {/* Badge de especialidad */}
-                    <div style={{
-                        fontFamily: 'var(--mono)',
-                        fontSize: 8,
-                        letterSpacing: '0.09em',
-                        textTransform: 'uppercase',
-                        padding: '3px 10px',
-                        borderRadius: 'var(--r4)',
-                        border: '1px solid var(--border-focus)',
-                        background: 'var(--accent-glow)',
-                        color: 'var(--accent-h)',
-                        cursor: 'default',
-                        whiteSpace: 'nowrap',
-                    }}>
-                        Carcinoma pulmonar
-                    </div>
 
                     <div style={{ flex: 1 }} />
 
