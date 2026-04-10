@@ -1,5 +1,7 @@
 // lib/api/chat.ts
-// Cliente — llama al route handler /api/chat.
+// Maneja dos formatos de SSE:
+//   • FastAPI  → data: { text, gradcam }         (respuesta de imagen)
+//   • Groq     → data: { choices:[{delta:{content}}] }  (stream OpenAI-compatible)
 
 type TextBlock  = { type: 'text'; text: string }
 type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
@@ -38,41 +40,66 @@ export async function streamChat(
         return
     }
 
-    // Leer TODA la respuesta de una vez (no es streaming real, es un único chunk JSON)
-    const fullText = await res.text()
+    // Leer el stream línea a línea con un reader para soportar streaming real de Groq
+    const reader  = res.body?.getReader()
+    const decoder = new TextDecoder()
 
-    let textResult  = ''
-    let gradcamResult = ''
+    if (!reader) {
+        callbacks.onError(new Error('No se pudo leer el stream'))
+        return
+    }
 
-    for (const line of fullText.split('\n')) {
-        const trimmed = line.trim()
-        if (!trimmed.startsWith('data:')) continue
+    let buffer = ''
 
-        const payload = trimmed.slice(5).trim()
-        if (payload === '[DONE]') continue
+    try {
+        while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
 
-        try {
-            const json = JSON.parse(payload)
+            buffer += decoder.decode(value, { stream: true })
 
-            if (typeof json.text === 'string' && json.text.length > 0) {
-                textResult = json.text
+            // Procesar todas las líneas completas disponibles en el buffer
+            const lines = buffer.split('\n')
+            buffer = lines.pop() ?? ''   // la última puede estar incompleta
+
+            for (const line of lines) {
+                const trimmed = line.trim()
+                if (!trimmed.startsWith('data:')) continue
+
+                const payload = trimmed.slice(5).trim()
+                if (payload === '[DONE]') continue
+
+                let json: Record<string, unknown>
+                try {
+                    json = JSON.parse(payload)
+                } catch {
+                    continue   // línea malformada
+                }
+
+                // ── Formato FastAPI: { text, gradcam? } ──
+                if (typeof json.text === 'string' && json.text.length > 0) {
+                    callbacks.onChunk(json.text)
+                }
+                if (typeof json.gradcam === 'string' && json.gradcam.length > 0) {
+                    callbacks.onGradcam(json.gradcam)
+                }
+
+                // ── Formato Groq/OpenAI: { choices:[{ delta:{ content } }] } ──
+                const choices = json.choices
+                if (Array.isArray(choices) && choices.length > 0) {
+                    const delta = (choices[0] as Record<string, unknown>).delta
+                    if (delta && typeof (delta as Record<string, unknown>).content === 'string') {
+                        const content = (delta as Record<string, unknown>).content as string
+                        if (content.length > 0) callbacks.onChunk(content)
+                    }
+                }
             }
-            if (typeof json.gradcam === 'string' && json.gradcam.length > 0) {
-                gradcamResult = json.gradcam
-            }
-        } catch {
-            // línea malformada — ignorar
         }
-    }
-
-    // Primero el texto
-    if (textResult) {
-        callbacks.onChunk(textResult)
-    }
-
-    // Luego el Grad-CAM (si existe)
-    if (gradcamResult) {
-        callbacks.onGradcam(gradcamResult)
+    } catch (err) {
+        callbacks.onError(new Error(`Error leyendo stream: ${err}`))
+        return
+    } finally {
+        reader.releaseLock()
     }
 
     callbacks.onDone()
