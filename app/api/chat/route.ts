@@ -1,93 +1,164 @@
 // app/api/chat/route.ts
-// Servidor Next.js — proxy hacia cualquier API compatible con OpenAI.
-// Variables en .env:
-//   AI_API_URL   → endpoint del proveedor
-//   AI_API_KEY   → api key del proveedor
-//   AI_MODEL     → modelo a usar
+// Proxy hacia la API FastAPI de carcinoma pulmonar.
+// Variable en .env:
+//   FASTAPI_URL → URL base de tu API (ej: http://localhost:8000)
 
 import { NextRequest } from 'next/server'
 
-const AI_URL   = process.env.AI_API_URL ?? ''
-const AI_KEY   = process.env.AI_API_KEY ?? ''
-const AI_MODEL = process.env.AI_MODEL   ?? ''
+const FASTAPI_URL = process.env.FASTAPI_URL ?? 'http://localhost:8000'
 
-const SYSTEM_PROMPT = `Eres un asistente médico especializado en carcinoma pulmonar.
-Ayudas a médicos radiólogos con análisis de imágenes, interpretación de resultados
-y soporte clínico basado en evidencia. Responde siempre en español, de forma clara
-y precisa. No sustituyes el criterio médico profesional.`
+const PATHOLOGY_THRESHOLD = 0.30
+const YOUDEN_THRESHOLD    = 0.514
+const CANCER_ES           = ['Masa (posible tumor)', 'Nódulo (posible tumor)']
 
-// ── Normalización de mensajes ─────────────────────────────────────────────────
-// Convierte el formato interno de imágenes ({ type:'image', source:{ type:'base64', ... } })
-// al formato image_url compatible con la especificación OpenAI, que es el estándar
-// adoptado por la mayoría de proveedores con soporte de visión.
-type TextBlock     = { type: 'text'; text: string }
-type ImageBlock    = { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
-type ImageUrlBlock = { type: 'image_url'; image_url: { url: string } }
-type ContentBlock  = TextBlock | ImageBlock
+// ── Tipos ─────────────────────────────────────────────────────────────────────
+type TextBlock  = { type: 'text';  text: string }
+type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+type ContentBlock = TextBlock | ImageBlock
 
-function normalizeMessages(messages: unknown[]): unknown[] {
-    return messages.map(msg => {
-        const m = msg as { role: string; content: unknown }
-        if (!Array.isArray(m.content)) return m
+interface IncomingMessage {
+    role:    string
+    content: string | ContentBlock[]
+}
 
-        const content = (m.content as ContentBlock[]).map(block => {
-            if (block.type === 'image') {
-                const url = `data:${block.source.media_type};base64,${block.source.data}`
-                return { type: 'image_url', image_url: { url } } satisfies ImageUrlBlock
-            }
-            return block
-        })
+interface FastAPIResponse {
+    cancer_probability: number
+    cancer_result:      string
+    pathologies:        Record<string, number>
+    gradcam_image?:     string
+}
 
-        return { ...m, content }
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Busca un bloque de imagen en CUALQUIER mensaje del historial (del más reciente al más antiguo).
+ * Esto cubre el caso donde el usuario manda imagen + texto en mensajes distintos.
+ */
+function findImageBlock(messages: IncomingMessage[]): ImageBlock | null {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i]
+        if (!Array.isArray(msg.content)) continue
+        const block = (msg.content as ContentBlock[]).find(
+            (b): b is ImageBlock => b.type === 'image'
+        )
+        if (block) return block
+    }
+    return null
+}
+
+/** Formatea la respuesta de FastAPI en texto legible para el chat */
+function formatResponse(data: FastAPIResponse): string {
+    const { cancer_probability, cancer_result, pathologies } = data
+
+    const detected = Object.entries(pathologies)
+        .filter(([name, prob]) => !CANCER_ES.includes(name) && prob > PATHOLOGY_THRESHOLD)
+        .sort(([, a], [, b]) => b - a)
+
+    let text = `${cancer_result}\n\n`
+
+    if (detected.length > 0) {
+        text += `**Otras condiciones detectadas (>${Math.round(PATHOLOGY_THRESHOLD * 100)}%):**\n`
+        for (const [name, prob] of detected) {
+            const bar = '█'.repeat(Math.round(prob * 20))
+            text += `• ${name}: ${Math.round(prob * 100)}% ${bar}\n`
+        }
+        text += '\n'
+    } else {
+        text += 'No se detectaron otras condiciones relevantes (>30%).\n\n'
+    }
+
+    if (cancer_probability >= YOUDEN_THRESHOLD) {
+        text += detected.length > 0
+            ? '💡 **Nota:** Se detectaron también otras condiciones. Un especialista debe evaluar el cuadro completo.'
+            : '💡 **Se recomienda evaluación urgente por un especialista.**'
+    } else if (detected.length > 0) {
+        text += '💡 Aunque no se detectan indicadores fuertes de carcinoma, las condiciones listadas ameritan revisión médica.'
+    } else {
+        text += '✅ No se detectaron hallazgos significativos en esta imagen.'
+    }
+
+    return text
+}
+
+/** Devuelve una respuesta SSE con un mensaje de error */
+function sseError(message: string): Response {
+    const payload = `data: ${JSON.stringify({ text: `❌ ${message}` })}\n\ndata: [DONE]\n\n`
+    return new Response(payload, {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
     })
 }
-// ─────────────────────────────────────────────────────────────────────────────
+
+/** Devuelve una respuesta SSE con texto plano */
+function sseText(message: string): Response {
+    const payload = `data: ${JSON.stringify({ text: message })}\n\ndata: [DONE]\n\n`
+    return new Response(payload, {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+    })
+}
+
+// ── Handler principal ─────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-    if (!AI_KEY) {
-        return new Response('AI_API_KEY no configurada en .env', { status: 500 })
-    }
-    if (!AI_URL) {
-        return new Response('AI_API_URL no configurada en .env', { status: 500 })
-    }
-    if (!AI_MODEL) {
-        return new Response('AI_MODEL no configurado en .env', { status: 500 })
-    }
-
-    let body: { messages: unknown[] }
+    let body: { messages: IncomingMessage[] }
     try {
         body = await req.json()
     } catch {
         return new Response('Body inválido', { status: 400 })
     }
 
-    let aiRes: Response
+    const { messages } = body
+
+    // Buscar imagen en cualquier mensaje del historial
+    const imageBlock = findImageBlock(messages)
+
+    // Sin imagen en todo el historial → pedir que adjunte una
+    if (!imageBlock) {
+        return sseText('📎 Por favor adjunta una imagen de tórax (radiografía o CT) para que pueda analizarla.')
+    }
+
+    // ── Enviar imagen a FastAPI /predict ──────────────────────────────────────
+    const { data: imageData, media_type } = imageBlock.source
+    const ext    = media_type.split('/')[1] ?? 'png'
+    const buffer = Buffer.from(imageData, 'base64')
+    const blob   = new Blob([buffer], { type: media_type })
+
+    const formData = new FormData()
+    formData.append('file', blob, `imagen.${ext}`)
+
+    let apiRes: Response
     try {
-        aiRes = await fetch(AI_URL, {
+        apiRes = await fetch(`${FASTAPI_URL}/predict`, {
             method: 'POST',
-            headers: {
-                'Content-Type':  'application/json',
-                'Authorization': `Bearer ${AI_KEY}`,
-            },
-            body: JSON.stringify({
-                model:    AI_MODEL,
-                stream:   true,
-                messages: [
-                    { role: 'system', content: SYSTEM_PROMPT },
-                    ...normalizeMessages(body.messages),
-                ],
-            }),
+            body:   formData,
         })
     } catch (err) {
-        return new Response(`No se pudo conectar al proveedor de IA: ${err}`, { status: 502 })
+        return sseError(`No se pudo conectar con la API en ${FASTAPI_URL}. ¿Está corriendo FastAPI? (${err})`)
     }
 
-    if (!aiRes.ok) {
-        const detail = await aiRes.text()
-        return new Response(`Error del proveedor (${aiRes.status}): ${detail}`, { status: 502 })
+    if (!apiRes.ok) {
+        const detail = await apiRes.text()
+        return sseError(`Error de la API (${apiRes.status}): ${detail}`)
     }
 
-    return new Response(aiRes.body, {
+    let data: FastAPIResponse
+    try {
+        data = await apiRes.json()
+    } catch {
+        return sseError('La API devolvió una respuesta inválida.')
+    }
+
+    // ── Formatear y devolver como SSE ─────────────────────────────────────────
+    const responsePayload: Record<string, unknown> = {
+        text: formatResponse(data),
+    }
+
+    if (data.gradcam_image) {
+        responsePayload.gradcam = data.gradcam_image
+    }
+
+    const ssePayload = `data: ${JSON.stringify(responsePayload)}\n\ndata: [DONE]\n\n`
+
+    return new Response(ssePayload, {
         headers: {
             'Content-Type':  'text/event-stream',
             'Cache-Control': 'no-cache',

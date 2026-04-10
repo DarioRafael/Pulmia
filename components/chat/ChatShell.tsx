@@ -148,6 +148,7 @@ export function ChatShell() {
 
     function handleSend(text: string, imageB64?: string, imageMime?: string) {
         if (!text.trim() && !imageB64) return
+
         addMessage('user', text, imageB64 ? `data:${imageMime};base64,${imageB64}` : undefined)
         setStatusKey('thinking')
         showTyping()
@@ -174,14 +175,29 @@ export function ChatShell() {
             history.push({ role: 'user', content: text || '(imagen adjunta)' })
         }
 
-        let isStreamStarted = false
+        // ── Iniciar el stream ANTES de llamar a la API ──
+        // Esto garantiza que streamIdRef.current esté seteado
+        // cuando onChunk llegue con el resultado.
+        startStream()
+
         streamChat(history, {
             onChunk: (chunk) => {
-                if (!isStreamStarted) { hideTyping(); startStream(); isStreamStarted = true }
+                hideTyping()
                 appendChunk(chunk)
             },
-            onDone: () => { endStream(); setStatusKey('online') },
-            onError: (err) => { hideTyping(); endStream(); setStatusKey('idle'); showToast(`Error: ${err.message}`) },
+            onGradcam: (base64) => {
+                addMessage('ai', '🔬 **Grad-CAM** — Región de interés analizada por el modelo:', `data:image/png;base64,${base64}`, 'Grad-CAM')
+            },
+            onDone: () => {
+                endStream()
+                setStatusKey('online')
+            },
+            onError: (err) => {
+                hideTyping()
+                endStream()
+                setStatusKey('idle')
+                showToast(`Error: ${err.message}`)
+            },
         })
     }
 
@@ -214,7 +230,6 @@ export function ChatShell() {
                 minWidth: 0,
                 position: 'relative',
             }}>
-                {/* ── Header ─────────────────────────────────────────────────── */}
                 <header style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -228,7 +243,6 @@ export function ChatShell() {
                     position: 'relative',
                     zIndex: 10,
                 }}>
-                    {/* Avatar del sistema */}
                     <div style={{
                         width: 30,
                         height: 30,
@@ -245,10 +259,8 @@ export function ChatShell() {
                             <path d="M7 2V7M4 7C4 9.2 2 10 2 12H6C6 10 7 9 7 7M10 7C10 9.2 12 10 12 12H8C8 10 7 9 7 7"
                                   stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
-
                     </div>
 
-                    {/* Nombre y estado */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                         <div style={{
                             fontSize: 12.5,
@@ -270,10 +282,8 @@ export function ChatShell() {
                         </div>
                     </div>
 
-
                     <div style={{ flex: 1 }} />
 
-                    {/* Botón buscar */}
                     <button
                         onClick={() => setSearchOpen(v => !v)}
                         title="Buscar (Ctrl+F)"
@@ -309,7 +319,6 @@ export function ChatShell() {
                         </svg>
                     </button>
 
-                    {/* SearchBar superpuesta */}
                     <SearchBar
                         open={searchOpen}
                         query={searchQuery}

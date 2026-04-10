@@ -33,19 +33,17 @@ export function useChat() {
     }, [])
 
     const startStream = useCallback(() => {
-        // Si había un stream activo que no se cerró correctamente, cerrarlo primero
+        // Cerrar stream anterior si existe
         if (streamIdRef.current) {
             const staleId = streamIdRef.current
             setMessages(prev =>
-                prev.map(m =>
-                    m.id === staleId ? { ...m, isStreaming: false } : m
-                )
+                prev.map(m => m.id === staleId ? { ...m, isStreaming: false } : m)
             )
         }
 
         streamBufferRef.current = ''
         const id = generateId()
-        streamIdRef.current = id
+        streamIdRef.current = id  // ← se setea SINCRÓNICAMENTE antes de cualquier render
 
         const msg: Message = {
             id,
@@ -61,13 +59,31 @@ export function useChat() {
     }, [])
 
     const appendChunk = useCallback((chunk: string) => {
-        if (!streamIdRef.current) return
+        // Si no hay stream activo, iniciarlo automáticamente
+        if (!streamIdRef.current) {
+            const id = generateId()
+            streamIdRef.current = id
+            streamBufferRef.current = chunk
+
+            const msg: Message = {
+                id,
+                role: 'ai',
+                content: chunk,
+                timestamp: new Date(),
+                isStreaming: true,
+            }
+            setMessages(prev => [...prev, msg])
+            setStatus('escribiendo...')
+            setIsTyping(false)
+            return
+        }
+
         streamBufferRef.current += chunk
         const raw = streamBufferRef.current
+        const id   = streamIdRef.current
+
         setMessages(prev =>
-            prev.map(m =>
-                m.id === streamIdRef.current ? { ...m, content: raw } : m
-            )
+            prev.map(m => m.id === id ? { ...m, content: raw } : m)
         )
     }, [])
 
@@ -75,38 +91,31 @@ export function useChat() {
         if (!streamIdRef.current) return
         const id = streamIdRef.current
 
-        // Limpiar refs ANTES de actualizar estado para evitar condición de carrera
         streamIdRef.current = null
         streamBufferRef.current = ''
 
         setMessages(prev =>
-            prev.map(m =>
-                m.id === id ? { ...m, isStreaming: false } : m
-            )
+            prev.map(m => m.id === id ? { ...m, isStreaming: false } : m)
         )
         setStatus('en espera...')
     }, [])
 
-    // Seguridad extra: fuerza el cierre de cualquier stream activo
     const forceEndStream = useCallback(() => {
         if (!streamIdRef.current) return
         const id = streamIdRef.current
         streamIdRef.current = null
         streamBufferRef.current = ''
         setMessages(prev =>
-            prev.map(m =>
-                m.id === id ? { ...m, isStreaming: false } : m
-            )
+            prev.map(m => m.id === id ? { ...m, isStreaming: false } : m)
         )
         setStatus('en espera...')
         setIsTyping(false)
     }, [])
 
-    const showTyping = useCallback(() => setIsTyping(true), [])
-    const hideTyping = useCallback(() => setIsTyping(false), [])
+    const showTyping  = useCallback(() => setIsTyping(true), [])
+    const hideTyping  = useCallback(() => setIsTyping(false), [])
 
     const clearMessages = useCallback(() => {
-        // Cerrar cualquier stream activo antes de limpiar
         if (streamIdRef.current) {
             streamIdRef.current = null
             streamBufferRef.current = ''
