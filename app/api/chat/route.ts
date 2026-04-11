@@ -1,7 +1,7 @@
 // app/api/chat/route.ts
 // Lógica dual:
-//   • Mensaje con imagen  → FastAPI /predict (modelo de visión)
-//   • Mensaje solo texto  → Groq (solo con datos numéricos, sin imagen)
+//   • Mensaje con imagen  → FastAPI /predict (modelo de visión) → Groq interpreta los datos
+//   • Mensaje solo texto  → Groq (con datos numéricos del último análisis, sin imagen)
 //
 // Variables en .env:
 //   FASTAPI_URL  → URL base de tu API  (ej: http://localhost:8000)
@@ -70,42 +70,124 @@ function sseError(message: string): Response {
     })
 }
 
-// ── Rama A: imagen → FastAPI ──────────────────────────────────────────────────
+// ── Helpers de Groq ───────────────────────────────────────────────────────────
 
-function formatFastAPIResponse(data: FastAPIResponse): string {
-    const { cancer_probability, cancer_result, pathologies } = data
+function normalizeMessagesForGroq(messages: IncomingMessage[]): unknown[] {
+    const result: unknown[] = []
 
-    const detected = Object.entries(pathologies)
-        .filter(([name, prob]) => !CANCER_ES.includes(name) && prob > PATHOLOGY_THRESHOLD)
-        .sort(([, a], [, b]) => b - a)
+    for (const msg of messages) {
+        const role = msg.role === 'ai' ? 'assistant' : msg.role
 
-    let text = `${cancer_result}\n\n`
-
-    if (detected.length > 0) {
-        text += `**Otras condiciones detectadas (>${Math.round(PATHOLOGY_THRESHOLD * 100)}%):**\n`
-        for (const [name, prob] of detected) {
-            const bar = '█'.repeat(Math.round(prob * 20))
-            text += `• ${name}: ${Math.round(prob * 100)}% ${bar}\n`
+        if (typeof msg.content === 'string') {
+            if (msg.content.trim()) result.push({ role, content: msg.content })
+            continue
         }
-        text += '\n'
-    } else {
-        text += 'No se detectaron otras condiciones relevantes (>30%).\n\n'
+
+        const textBlocks = (msg.content as ContentBlock[])
+            .filter((b): b is TextBlock => b.type === 'text')
+            .map(b => b.text)
+            .join('\n')
+            .trim()
+
+        if (textBlocks) result.push({ role, content: textBlocks })
     }
 
-    if (cancer_probability >= YOUDEN_THRESHOLD) {
-        text += detected.length > 0
-            ? '💡 **Nota:** Se detectaron también otras condiciones. Un especialista debe evaluar el cuadro completo.'
-            : '💡 **Se recomienda evaluación urgente por un especialista.**'
-    } else if (detected.length > 0) {
-        text += '💡 Aunque no se detectan indicadores fuertes de carcinoma, las condiciones listadas ameritan revisión médica.'
-    } else {
-        text += '✅ No se detectaron hallazgos significativos en esta imagen.'
-    }
-
-    return text
+    return result
 }
 
-async function handleImageMessage(imageBlock: ImageBlock): Promise<Response> {
+function buildSystemPrompt(analysis: FastAPIResponse | null): string {
+    if (!analysis) return SYSTEM_PROMPT
+
+    const { cancer_probability, cancer_result, pathologies } = analysis
+
+    const relevantes = Object.entries(pathologies)
+        .filter(([name, prob]) => !CANCER_ES.includes(name) && prob > PATHOLOGY_THRESHOLD)
+        .sort(([, a], [, b]) => b - a)
+        .map(([name, prob]) => `  - ${name}: ${Math.round(prob * 100)}%`)
+        .join('\n')
+
+    const contexto = `
+
+=== DATOS DEL ÚLTIMO ANÁLISIS (modelo de visión) ===
+Resultado: ${cancer_result}
+Probabilidad de cáncer: ${Math.round(cancer_probability * 100)}%
+Umbral de detección: ${Math.round(YOUDEN_THRESHOLD * 100)}%
+Condiciones detectadas (>${Math.round(PATHOLOGY_THRESHOLD * 100)}%):
+${relevantes || '  (ninguna por encima del umbral)'}
+=====================================================
+Basa tus respuestas ÚNICAMENTE en estos datos. No describas ni analices imágenes.`
+
+    return SYSTEM_PROMPT + contexto
+}
+
+async function callGroqStreaming(systemPrompt: string, userMessage: string): Promise<Response> {
+    if (!AI_KEY)   return sseError('AI_API_KEY no configurada en .env')
+    if (!AI_URL)   return sseError('AI_API_URL no configurada en .env')
+    if (!AI_MODEL) return sseError('AI_MODEL no configurado en .env')
+
+    let aiRes: Response
+    try {
+        aiRes = await fetch(AI_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type':  'application/json',
+                'Authorization': `Bearer ${AI_KEY}`,
+            },
+            body: JSON.stringify({
+                model:  AI_MODEL,
+                stream: true,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user',   content: userMessage  },
+                ],
+            }),
+        })
+    } catch (err) {
+        return sseError(`No se pudo conectar con Groq: ${err}`)
+    }
+
+    if (!aiRes.ok) {
+        return sseError(`Error de Groq (${aiRes.status}): ${await aiRes.text()}`)
+    }
+
+    return new Response(aiRes.body, {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+    })
+}
+
+// ── Rama A: imagen → FastAPI → Groq interpreta ───────────────────────────────
+
+/**
+ * Construye el prompt que Groq recibirá con los datos crudos de FastAPI.
+ * Groq redacta la interpretación completa, sin texto hardcodeado.
+ */
+function buildImageAnalysisPrompt(data: FastAPIResponse): string {
+    const { cancer_probability, cancer_result, pathologies } = data
+
+    const todasPathologies = Object.entries(pathologies)
+        .sort(([, a], [, b]) => b - a)
+        .map(([name, prob]) => `  - ${name}: ${Math.round(prob * 100)}%`)
+        .join('\n')
+
+    return `Se acaba de analizar una radiografía de tórax con el modelo de visión. Estos son los resultados crudos:
+
+=== RESULTADOS DEL MODELO DE VISIÓN ===
+Resultado general: ${cancer_result}
+Probabilidad de carcinoma: ${Math.round(cancer_probability * 100)}%
+Umbral de detección (Youden): ${Math.round(YOUDEN_THRESHOLD * 100)}%
+
+Probabilidades por condición (todas):
+${todasPathologies}
+
+Umbral relevancia otras patologías: ${Math.round(PATHOLOGY_THRESHOLD * 100)}%
+=======================================
+
+Con base ÚNICAMENTE en estos datos numéricos, redacta un informe clínico claro y estructurado para el radiólogo. 
+Incluye: interpretación del resultado de carcinoma, análisis de las condiciones detectadas por encima del umbral, y recomendaciones clínicas apropiadas según la severidad. 
+Usa formato markdown. No menciones que eres una IA ni que estás interpretando datos; redacta directamente como informe.`
+}
+
+async function handleImageMessage(imageBlock: ImageBlock, messages: IncomingMessage[]): Promise<Response> {
     const { data: imageData, media_type } = imageBlock.source
     const ext    = media_type.split('/')[1] ?? 'png'
     const buffer = Buffer.from(imageData, 'base64')
@@ -132,74 +214,45 @@ async function handleImageMessage(imageBlock: ImageBlock): Promise<Response> {
         return sseError('FastAPI devolvió una respuesta inválida.')
     }
 
-    // Guardar para contexto conversacional
+    // Guardar para contexto conversacional posterior
     lastAnalysis = data
 
-    const responsePayload: Record<string, unknown> = { text: formatFastAPIResponse(data) }
-    if (data.gradcam_image) responsePayload.gradcam = data.gradcam_image
+    // Si hay gradcam, enviarlo primero como evento separado antes del streaming de texto
+    // El cliente debe manejar este evento inicial y luego concatenar el stream de Groq
+    if (data.gradcam_image) {
+        // Emitimos el gradcam como primer chunk SSE, luego el stream de Groq continúa
+        const groqResponse = await callGroqStreaming(SYSTEM_PROMPT, buildImageAnalysisPrompt(data))
 
-    return new Response(`data: ${JSON.stringify(responsePayload)}\n\ndata: [DONE]\n\n`, {
-        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
-    })
+        // Prefijamos el stream con el evento gradcam
+        const gradcamChunk = `data: ${JSON.stringify({ gradcam: data.gradcam_image })}\n\n`
+        const encoder = new TextEncoder()
+
+        const readable = new ReadableStream({
+            async start(controller) {
+                controller.enqueue(encoder.encode(gradcamChunk))
+
+                if (groqResponse.body) {
+                    const reader = groqResponse.body.getReader()
+                    while (true) {
+                        const { done, value } = await reader.read()
+                        if (done) break
+                        controller.enqueue(value)
+                    }
+                }
+                controller.close()
+            },
+        })
+
+        return new Response(readable, {
+            headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+        })
+    }
+
+    // Sin gradcam: stream directo de Groq
+    return callGroqStreaming(SYSTEM_PROMPT, buildImageAnalysisPrompt(data))
 }
 
 // ── Rama B: texto → Groq ──────────────────────────────────────────────────────
-
-/**
- * Limpia el historial para Groq:
- * - Elimina TODOS los bloques de imagen (Groq solo recibe texto)
- * - Normaliza role 'ai' → 'assistant'
- * - Descarta mensajes que queden vacíos tras eliminar imágenes
- */
-function normalizeMessagesForGroq(messages: IncomingMessage[]): unknown[] {
-    const result: unknown[] = []
-
-    for (const msg of messages) {
-        const role = msg.role === 'ai' ? 'assistant' : msg.role
-
-        if (typeof msg.content === 'string') {
-            if (msg.content.trim()) result.push({ role, content: msg.content })
-            continue
-        }
-
-        // Filtrar: solo bloques de texto, sin imágenes
-        const textBlocks = (msg.content as ContentBlock[])
-            .filter((b): b is TextBlock => b.type === 'text')
-            .map(b => b.text)
-            .join('\n')
-            .trim()
-
-        if (textBlocks) result.push({ role, content: textBlocks })
-    }
-
-    return result
-}
-
-/** Inyecta los datos numéricos del análisis en el system prompt */
-function buildSystemPrompt(analysis: FastAPIResponse | null): string {
-    if (!analysis) return SYSTEM_PROMPT
-
-    const { cancer_probability, cancer_result, pathologies } = analysis
-
-    const relevantes = Object.entries(pathologies)
-        .filter(([name, prob]) => !CANCER_ES.includes(name) && prob > PATHOLOGY_THRESHOLD)
-        .sort(([, a], [, b]) => b - a)
-        .map(([name, prob]) => `  - ${name}: ${Math.round(prob * 100)}%`)
-        .join('\n')
-
-    const contexto = `
-
-=== DATOS DEL ÚLTIMO ANÁLISIS (modelo de visión) ===
-Resultado: ${cancer_result}
-Probabilidad de cáncer: ${Math.round(cancer_probability * 100)}%
-Umbral de detección: ${Math.round(YOUDEN_THRESHOLD * 100)}%
-Condiciones detectadas (>${Math.round(PATHOLOGY_THRESHOLD * 100)}%):
-${relevantes || '  (ninguna por encima del umbral)'}
-=====================================================
-Basa tus respuestas ÚNICAMENTE en estos datos. No describas ni analices imágenes.`
-
-    return SYSTEM_PROMPT + contexto
-}
 
 async function handleTextMessage(messages: IncomingMessage[]): Promise<Response> {
     if (!AI_KEY)   return sseError('AI_API_KEY no configurada en .env')
@@ -250,6 +303,6 @@ export async function POST(req: NextRequest) {
     const imageBlock = findImageInLastMessage(messages)
 
     return imageBlock
-        ? handleImageMessage(imageBlock)   // imagen → FastAPI
-        : handleTextMessage(messages)      // texto  → Groq (sin imágenes, con datos numéricos)
+        ? handleImageMessage(imageBlock, messages)  // imagen → FastAPI → Groq interpreta
+        : handleTextMessage(messages)                // texto  → Groq (con datos numéricos)
 }

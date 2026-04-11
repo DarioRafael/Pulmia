@@ -11,6 +11,7 @@ export interface Message {
     imageDataUrl?: string
     imageCaption?: string
     isStreaming?: boolean
+    gradcamDataUrl?: string
 }
 
 export interface Chat {

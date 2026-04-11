@@ -65,7 +65,7 @@ type ContentBlock = TextBlock | ImageBlock
 type HistoryMessage = { role: 'user' | 'assistant'; content: string | ContentBlock[] }
 
 export function ChatShell() {
-    const { messages, isTyping, status, setStatus, addMessage, startStream, appendChunk, endStream, showTyping, hideTyping, clearMessages } = useChat()
+    const { messages, isTyping, status, setStatus, addMessage, startStream, appendChunk, endStream, attachGradcam, showTyping, hideTyping, clearMessages } = useChat()
     const { message: toastMsg, visible: toastVisible, showToast } = useToast()
 
     const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -175,9 +175,6 @@ export function ChatShell() {
             history.push({ role: 'user', content: text || '(imagen adjunta)' })
         }
 
-        // ── Iniciar el stream ANTES de llamar a la API ──
-        // Esto garantiza que streamIdRef.current esté seteado
-        // cuando onChunk llegue con el resultado.
         startStream()
 
         streamChat(history, {
@@ -185,8 +182,9 @@ export function ChatShell() {
                 hideTyping()
                 appendChunk(chunk)
             },
+            // Grad-CAM: se adjunta al mensaje de stream actual (no crea uno nuevo)
             onGradcam: (base64) => {
-                addMessage('ai', '🔬 **Grad-CAM** — Región de interés analizada por el modelo:', `data:image/png;base64,${base64}`, 'Grad-CAM')
+                attachGradcam(`data:image/png;base64,${base64}`)
             },
             onDone: () => {
                 endStream()

@@ -33,7 +33,6 @@ export function useChat() {
     }, [])
 
     const startStream = useCallback(() => {
-        // Cerrar stream anterior si existe
         if (streamIdRef.current) {
             const staleId = streamIdRef.current
             setMessages(prev =>
@@ -43,7 +42,7 @@ export function useChat() {
 
         streamBufferRef.current = ''
         const id = generateId()
-        streamIdRef.current = id  // ← se setea SINCRÓNICAMENTE antes de cualquier render
+        streamIdRef.current = id
 
         const msg: Message = {
             id,
@@ -59,7 +58,6 @@ export function useChat() {
     }, [])
 
     const appendChunk = useCallback((chunk: string) => {
-        // Si no hay stream activo, iniciarlo automáticamente
         if (!streamIdRef.current) {
             const id = generateId()
             streamIdRef.current = id
@@ -84,6 +82,18 @@ export function useChat() {
 
         setMessages(prev =>
             prev.map(m => m.id === id ? { ...m, content: raw } : m)
+        )
+    }, [])
+
+    /**
+     * Adjunta el Grad-CAM al mensaje de stream activo.
+     * El campo gradcamDataUrl se renderiza ENCIMA del texto en MessageBubble.
+     */
+    const attachGradcam = useCallback((dataUrl: string) => {
+        const id = streamIdRef.current
+        if (!id) return
+        setMessages(prev =>
+            prev.map(m => m.id === id ? { ...m, gradcamDataUrl: dataUrl } : m)
         )
     }, [])
 
@@ -135,6 +145,7 @@ export function useChat() {
         appendChunk,
         endStream,
         forceEndStream,
+        attachGradcam,
         showTyping,
         hideTyping,
         clearMessages,

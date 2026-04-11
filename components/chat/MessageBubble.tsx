@@ -52,14 +52,24 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                         letterSpacing: '-0.01em',
                     }}
                 >
-                    {/* Imagen adjunta del usuario */}
                     {message.imageDataUrl && (
                         <div style={{ marginBottom: message.content ? 10 : 0 }}>
                             <img
                                 src={message.imageDataUrl}
                                 alt={message.imageCaption || 'Imagen adjunta'}
                                 className="bubble-img"
-                                onClick={() => window.open(message.imageDataUrl, '_blank')}
+                                style={{ cursor: 'zoom-in' }}
+                                onClick={() => {
+                                    const [header, base64] = (message.imageDataUrl ?? '').split(',')
+                                    const mime = header.match(/:(.*?);/)?.[1] ?? 'image/png'
+                                    const bytes = atob(base64)
+                                    const arr = new Uint8Array(bytes.length)
+                                    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
+                                    const blob = new Blob([arr], { type: mime })
+                                    const url = URL.createObjectURL(blob)
+                                    const win = window.open(url, '_blank')
+                                    win?.addEventListener('load', () => URL.revokeObjectURL(url), { once: true })
+                                }}
                             />
                             {message.imageCaption && (
                                 <div style={{
@@ -74,13 +84,10 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                             )}
                         </div>
                     )}
-
-                    {message.content && (
-                        <span>{message.content}</span>
-                    )}
+                    {message.content && <span>{message.content}</span>}
                 </div>
             ) : (
-                /* ── TEXTO IA ── */
+                /* ── RESPUESTA IA ── */
                 <div
                     style={{
                         maxWidth: '78%',
@@ -91,14 +98,52 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                         position: 'relative',
                     }}
                 >
-                    {/* Indicador de streaming */}
+                    {/* Grad-CAM ARRIBA del texto del informe */}
+                    {message.gradcamDataUrl && (
+                        <div style={{ marginBottom: 12 }}>
+                            <img
+                                src={message.gradcamDataUrl}
+                                alt="Grad-CAM"
+                                className="bubble-img"
+                                style={{ cursor: 'zoom-in', display: 'block' }}
+                                onClick={() => {
+                                    const [header, base64] = (message.gradcamDataUrl ?? '').split(',')
+                                    const mime = header.match(/:(.*?);/)?.[1] ?? 'image/png'
+                                    const bytes = atob(base64)
+                                    const arr = new Uint8Array(bytes.length)
+                                    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
+                                    const blob = new Blob([arr], { type: mime })
+                                    const url = URL.createObjectURL(blob)
+                                    const win = window.open(url, '_blank')
+                                    win?.addEventListener('load', () => URL.revokeObjectURL(url), { once: true })
+                                }}
+                            />
+                            <div style={{
+                                fontSize: 10,
+                                color: 'var(--t1)',
+                                fontFamily: 'var(--mono)',
+                                letterSpacing: '0.04em',
+                                marginTop: 4,
+                            }}>
+                                Grad-CAM — Región de interés analizada por el modelo
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Contenido markdown renderizado */}
+                    <div
+                        className="bubble prose-ai"
+                        dangerouslySetInnerHTML={{ __html: md(message.content) }}
+                    />
+
+                    {/* Indicador de streaming (debajo del texto, no intercalado) */}
                     {message.isStreaming && (
                         <span style={{
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: 2,
-                            marginLeft: 4,
-                            verticalAlign: 'middle',
+                            marginTop: 4,
+                            marginLeft: 2,
                         }}>
                             {[0, 1, 2].map(i => (
                                 <span
@@ -116,10 +161,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                         </span>
                     )}
 
-                    <span dangerouslySetInnerHTML={{ __html: md(message.content) }} />
-
                     {/* Botón copiar */}
-                    {!message.isStreaming && (
+                    {!message.isStreaming && message.content && (
                         <button
                             onClick={handleCopy}
                             className="copy-btn"
@@ -161,6 +204,48 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             >
                 {timestamp}
             </div>
+
+            {/* Estilos para markdown renderizado */}
+            <style>{`
+                .prose-ai h1, .prose-ai h2, .prose-ai h3 {
+                    font-size: 13px;
+                    font-weight: 650;
+                    color: var(--t0);
+                    margin: 12px 0 4px;
+                    letter-spacing: -0.02em;
+                    line-height: 1.3;
+                }
+                .prose-ai h1 { font-size: 14px; }
+                .prose-ai h2 { font-size: 13px; }
+                .prose-ai h3 { font-size: 12.5px; color: var(--t1); }
+                .prose-ai p  { margin: 4px 0; }
+                .prose-ai ul, .prose-ai ol {
+                    padding-left: 18px;
+                    margin: 4px 0;
+                }
+                .prose-ai li { margin: 2px 0; }
+                .prose-ai strong { font-weight: 650; color: var(--t0); }
+                .prose-ai em { color: var(--t1); font-style: italic; }
+                .prose-ai code {
+                    font-family: var(--mono);
+                    font-size: 11.5px;
+                    background: var(--bg-3);
+                    border: 1px solid var(--border);
+                    border-radius: 3px;
+                    padding: 1px 5px;
+                }
+                .prose-ai hr {
+                    border: none;
+                    border-top: 1px solid var(--border);
+                    margin: 10px 0;
+                }
+                .prose-ai blockquote {
+                    border-left: 2px solid var(--accent);
+                    padding-left: 10px;
+                    color: var(--t1);
+                    margin: 6px 0;
+                }
+            `}</style>
         </div>
     )
 }
