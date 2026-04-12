@@ -14,8 +14,11 @@ import type { LimitesPlan, PlanId } from './tipos'
  */
 export const LIMITES = {
     free: {
-        estudiosPorMes: 5,
-        estudiosEnHistorial: 3,
+        // TODO: Restaurar límites reales cuando se active el sistema de planes
+        // estudiosPorMes: 5,
+        // estudiosEnHistorial: 3,
+        estudiosPorMes: null,
+        estudiosEnHistorial: null,
     },
     premium: {
         estudiosPorMes: null,
