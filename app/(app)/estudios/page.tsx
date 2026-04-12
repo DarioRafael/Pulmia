@@ -1,16 +1,18 @@
 'use client'
 
 // Historial de estudios del usuario.
-// Muestra los estudios visibles según el plan (Free: últimos 3).
+// Muestra los estudios visibles según el plan, con nombre de paciente.
 
 import { HeaderApp } from '@/components/layout/header-app'
 import { ListaEstudios, useEstudios } from '@/features/estudios'
+import { usePacientes } from '@/features/pacientes'
 import { usePlan } from '@/components/plan'
 import { UpgradePrompt } from '@/components/plan'
 import { useRouter } from 'next/navigation'
 
 export default function EstudiosPage() {
     const { estudios, totalEstudios } = useEstudios()
+    const { pacientes } = usePacientes()
     const { can, limites } = usePlan()
     const router = useRouter()
 
@@ -33,6 +35,7 @@ export default function EstudiosPage() {
                 )}
                 <ListaEstudios
                     estudios={estudios}
+                    pacientes={pacientes}
                     onSeleccionar={(id) => router.push(`/estudios/${id}`)}
                 />
             </div>
