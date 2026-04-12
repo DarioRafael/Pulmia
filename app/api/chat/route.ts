@@ -245,7 +245,7 @@ async function handleTextMessage(messages: IncomingMessage[]): Promise<Response>
         headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
     })
 }
-
+//
 // ── Handler principal ────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
