@@ -17,7 +17,10 @@ import type { FeatureId, PlanId } from './tipos'
  *   if (can(plan, 'pacientes')) { ... }
  */
 export function can(plan: PlanId, feature: FeatureId): boolean {
-    return PLANES[plan].features.includes(feature)
+    // TODO: Restaurar lógica real cuando se active el sistema de planes
+    // return PLANES[plan].features.includes(feature)
+    void plan; void feature
+    return true
 }
 
 /**
