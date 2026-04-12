@@ -2,12 +2,14 @@
 
 // Lista de estudios del historial del usuario.
 // Muestra tarjetas resumidas con: miniatura, fecha, severidad, probabilidad.
+// Ahora muestra también el nombre del paciente si está asociado.
 
-import type { Estudio } from '@/lib/tipos'
+import type { Estudio, Paciente } from '@/lib/tipos'
 import { formatearFechaHora } from '@/lib/utils/fechas'
 
 interface ListaEstudiosProps {
     readonly estudios: readonly Estudio[]
+    readonly pacientes?: readonly Paciente[]
     readonly onSeleccionar: (id: string) => void
 }
 
@@ -17,7 +19,7 @@ const COLORES_SEVERIDAD: Record<string, string> = {
     alta: 'var(--err)',
 }
 
-export function ListaEstudios({ estudios, onSeleccionar }: ListaEstudiosProps) {
+export function ListaEstudios({ estudios, pacientes, onSeleccionar }: ListaEstudiosProps) {
     if (estudios.length === 0) {
         return (
             <div style={{
@@ -30,10 +32,16 @@ export function ListaEstudios({ estudios, onSeleccionar }: ListaEstudiosProps) {
         )
     }
 
+    function getNombrePaciente(pacienteId?: string): string | undefined {
+        if (!pacienteId || !pacientes) return undefined
+        return pacientes.find(p => p.id === pacienteId)?.nombre
+    }
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {estudios.map(estudio => {
                 const color = COLORES_SEVERIDAD[estudio.informe.severidad] ?? 'var(--t1)'
+                const nombrePaciente = getNombrePaciente(estudio.pacienteId)
                 return (
                     <button
                         key={estudio.id}
@@ -59,6 +67,11 @@ export function ListaEstudios({ estudios, onSeleccionar }: ListaEstudiosProps) {
                             </div>
                             <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--t2)', letterSpacing: '0.03em' }}>
                                 {formatearFechaHora(estudio.creadoEn)}
+                                {nombrePaciente && (
+                                    <span style={{ color: 'var(--accent)', marginLeft: 6 }}>
+                                        · {nombrePaciente}
+                                    </span>
+                                )}
                             </div>
                         </div>
 

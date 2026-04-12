@@ -42,7 +42,6 @@ const NAV_ITEMS: NavItem[] = [
     {
         href: '/pacientes',
         label: 'Pacientes',
-        feature: 'pacientes',
         icono: (
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <circle cx="8" cy="5.5" r="2.5" stroke="currentColor" strokeWidth="1.4" />
@@ -53,7 +52,6 @@ const NAV_ITEMS: NavItem[] = [
     {
         href: '/reportes',
         label: 'Reportes',
-        feature: 'reportes_pdf',
         icono: (
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path d="M4 2H10L12 4V14H4V2Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
