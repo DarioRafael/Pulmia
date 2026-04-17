@@ -1,7 +1,7 @@
 // POST /api/chat
 // Lógica dual:
-//   • Mensaje con imagen  → FastAPI /predict (modelo de visión) → Groq interpreta
-//   • Mensaje solo texto  → Groq (con datos del último análisis como contexto)
+//   • Mensaje con imagen  → FastAPI /predict (modelo de visión) → LLM interpreta
+//   • Mensaje solo texto  → LLM (con datos del último análisis como contexto)
 //
 // Ahora usa los módulos compartidos del sistema:
 //   - lib/modelo        → cliente tipado de FastAPI
@@ -19,12 +19,11 @@ const AI_KEY   = process.env.AI_API_KEY  ?? ''
 const AI_MODEL = process.env.AI_MODEL    ?? ''
 
 // ── System prompt base ───────────────────────────────────────────────────────
-// Más concreto: define el rol, el formato esperado y las restricciones duras.
 const SYSTEM_PROMPT_BASE = `Eres un asistente de soporte clínico especializado en interpretación de radiografías de tórax para carcinoma pulmonar.
 
 REGLAS ESTRICTAS:
 1. Basa tus respuestas ÚNICAMENTE en los datos numéricos que se te proporcionen. Nunca inventes valores.
-2. No describes imágenes ni mencionas haber visto ninguna radiografía.
+2. El mapa de calor Grad-CAM (si se proporciona) SOLO sirve para ubicar espacialmente los hallazgos — NO para inferir probabilidades ni diagnósticos adicionales.
 3. Responde siempre en español, con lenguaje clínico preciso y directo.
 4. No sustituyes el criterio médico profesional; indícalo cuando sea relevante.
 5. Si no tienes datos de análisis disponibles, indícalo explícitamente en lugar de especular.
@@ -42,6 +41,16 @@ type ContentBlock = TextBlock | ImageBlock
 interface IncomingMessage {
     role:    string
     content: string | ContentBlock[]
+}
+
+// Bloque de contenido para el request a Gemini (mixto: texto + imagen)
+type GeminiPart =
+    | { text: string }
+    | { inline_data: { mime_type: string; data: string } }
+
+interface GeminiMessage {
+    role:  string
+    parts: GeminiPart[]
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -66,12 +75,12 @@ function sseError(message: string): Response {
     })
 }
 
-function normalizeMessagesForGroq(messages: IncomingMessage[]): unknown[] {
-    const result: unknown[] = []
+function normalizeMessagesForLLM(messages: IncomingMessage[]): GeminiMessage[] {
+    const result: GeminiMessage[] = []
     for (const msg of messages) {
         const role = msg.role === 'ai' ? 'assistant' : msg.role
         if (typeof msg.content === 'string') {
-            if (msg.content.trim()) result.push({ role, content: msg.content })
+            if (msg.content.trim()) result.push({ role, parts: [{ text: msg.content }] })
             continue
         }
         const textBlocks = (msg.content as ContentBlock[])
@@ -79,7 +88,7 @@ function normalizeMessagesForGroq(messages: IncomingMessage[]): unknown[] {
             .map(b => b.text)
             .join('\n')
             .trim()
-        if (textBlocks) result.push({ role, content: textBlocks })
+        if (textBlocks) result.push({ role, parts: [{ text: textBlocks }] })
     }
     return result
 }
@@ -99,7 +108,6 @@ function buildSystemPrompt(analysis: ResultadoAnalisis | null): string {
     const carcinomaPct = Math.round(analysis.probabilidadCarcinoma * 100)
     const esPositivo   = analysis.probabilidadCarcinoma >= UMBRAL_YOUDEN
 
-    // Separar patologías relevantes de las que están bajo el umbral
     const relevantes = Object.entries(analysis.patologias)
         .filter(([name, prob]) => !ETIQUETAS_CARCINOMA.includes(name) && prob > UMBRAL_PATOLOGIA)
         .sort(([, a], [, b]) => b - a)
@@ -138,9 +146,9 @@ Al responder preguntas del médico:
 
 /**
  * User prompt para el análisis inicial de imagen.
- * Estructura los datos de forma que Groq produzca un informe médico completo.
+ * Si hay Grad-CAM, avisa a Gemini que lo tiene y cómo debe usarlo.
  */
-function buildImageAnalysisPrompt(data: ResultadoAnalisis): string {
+function buildImageAnalysisPrompt(data: ResultadoAnalisis, conGradcam: boolean): string {
     const umbralPct    = Math.round(UMBRAL_YOUDEN * 100)
     const carcinomaPct = Math.round(data.probabilidadCarcinoma * 100)
     const esPositivo   = data.probabilidadCarcinoma >= UMBRAL_YOUDEN
@@ -157,7 +165,19 @@ function buildImageAnalysisPrompt(data: ResultadoAnalisis): string {
         .map(([name, prob]) => `  • ${name}: ${Math.round(prob * 100)}%`)
         .join('\n')
 
-    return `El modelo de visión computacional procesó una radiografía de tórax. Estos son los resultados que debes interpretar:
+    // Instrucción de Grad-CAM solo si está disponible
+    const instruccionGradcam = conGradcam
+        ? `MAPA DE CALOR GRAD-CAM (adjunto como imagen):
+  • Zonas ROJAS/CÁLIDAS → mayor atención del modelo de visión
+  • Zonas AZULES/FRÍAS  → menor atención del modelo de visión
+  • Úsalo ÚNICAMENTE para ubicar espacialmente los hallazgos descritos en los datos numéricos.
+  • NO derives diagnósticos ni probabilidades adicionales del mapa de calor.
+  • Ejemplo de uso correcto: "La señal de Infiltración (62%) se concentra en el lóbulo superior derecho según el Grad-CAM."
+
+`
+        : ''
+
+    return `${instruccionGradcam}El modelo de visión computacional procesó una radiografía de tórax. Estos son los resultados que debes interpretar:
 
 RESULTADO PRINCIPAL:
   • Clasificación: ${data.etiquetaCarcinoma}
@@ -173,13 +193,13 @@ ${todasOrdenadas}
 
 ---
 
-Con base EXCLUSIVAMENTE en los datos anteriores, genera un informe clínico estructurado con las siguientes secciones en markdown:
+Con base EXCLUSIVAMENTE en los datos anteriores (y el Grad-CAM para ubicación espacial si está disponible), genera un informe clínico estructurado con las siguientes secciones en markdown:
 
 ## Resultado del Análisis Automatizado
 (Interpreta el veredicto del modelo y su probabilidad en contexto clínico)
 
 ## Hallazgos Relevantes
-(Analiza las condiciones con señal significativa y su posible implicación clínica)
+(Analiza las condiciones con señal significativa. Si hay Grad-CAM, menciona la zona anatómica aproximada donde el modelo concentró su atención para cada hallazgo)
 
 ## Nivel de Urgencia
 (Clasifica: Urgente / Prioritario / Rutinario, justificado en los datos)
@@ -193,49 +213,91 @@ Con base EXCLUSIVAMENTE en los datos anteriores, genera un informe clínico estr
 Redacta en tono clínico profesional. No menciones que eres una IA.`
 }
 
-// ── Llamada a Groq con streaming ─────────────────────────────────────────────
+// ── Llamada al servicio de lenguaje con streaming ────────────────────────────
 
-async function callGroqStreaming(
+async function callLLMStreaming(
     systemPrompt: string,
-    messages: unknown[],
+    messages: GeminiMessage[],
 ): Promise<Response> {
     if (!AI_KEY)   return sseError('AI_API_KEY no configurada en .env')
     if (!AI_URL)   return sseError('AI_API_URL no configurada en .env')
     if (!AI_MODEL) return sseError('AI_MODEL no configurado en .env')
 
-    let aiRes: Response
+    // Gemini nativa: convierte GeminiMessage[] directamente (ya vienen con parts tipados)
+    const contents = messages.map(msg => ({
+        role:  msg.role === 'assistant' ? 'model' : 'user',
+        parts: msg.parts,
+    }))
+
+    let llmRes: Response
     try {
-        aiRes = await fetch(AI_URL, {
+        llmRes = await fetch(`${AI_URL}/${AI_MODEL}:streamGenerateContent?alt=sse&key=${AI_KEY}`, {
             method: 'POST',
-            headers: {
-                'Content-Type':  'application/json',
-                'Authorization': `Bearer ${AI_KEY}`,
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model:  AI_MODEL,
-                stream: true,
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    ...messages,
-                ],
+                system_instruction: {
+                    parts: [{ text: systemPrompt }],
+                },
+                contents,
+                generationConfig: {
+                    temperature: 0.3,
+                },
             }),
         })
     } catch (err) {
-        return sseError(`No se pudo conectar con Groq: ${err}`)
+        return sseError(`No se pudo conectar con el servicio de lenguaje: ${err}`)
     }
 
-    if (!aiRes.ok) {
-        return sseError(`Error de Groq (${aiRes.status}): ${await aiRes.text()}`)
+    if (!llmRes.ok) {
+        return sseError(`Error del servicio de lenguaje (${llmRes.status}): ${await llmRes.text()}`)
     }
 
-    return new Response(aiRes.body, {
+    // Adaptar el formato SSE de Gemini al formato que espera el frontend
+    const encoder = new TextEncoder()
+    const readable = new ReadableStream({
+        async start(controller) {
+            const reader = llmRes.body!.getReader()
+            const decoder = new TextDecoder()
+            let buffer = ''
+
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+
+                buffer += decoder.decode(value, { stream: true })
+                const lines = buffer.split('\n')
+                buffer = lines.pop() ?? ''
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue
+                    const raw = line.slice(6).trim()
+                    if (!raw || raw === '[DONE]') continue
+
+                    try {
+                        const parsed = JSON.parse(raw)
+                        const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text
+                        if (text) {
+                            controller.enqueue(
+                                encoder.encode(`data: ${JSON.stringify({ text })}\n\n`)
+                            )
+                        }
+                    } catch { /* chunk incompleto, ignorar */ }
+                }
+            }
+
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+            controller.close()
+        },
+    })
+
+    return new Response(readable, {
         headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
     })
 }
 
-// ── Rama A: imagen → FastAPI → Groq ─────────────────────────────────────────
+// ── Rama A: imagen → FastAPI → LLM ──────────────────────────────────────────
 
-async function handleImageMessage(imageBlock: ImageBlock): Promise<Response> {
+async function handleVisionMessage(imageBlock: ImageBlock): Promise<Response> {
     const { data: imageData, media_type } = imageBlock.source
     const ext    = media_type.split('/')[1] ?? 'png'
     const buffer = Buffer.from(imageData, 'base64')
@@ -251,12 +313,31 @@ async function handleImageMessage(imageBlock: ImageBlock): Promise<Response> {
         return sseError(`Error inesperado: ${String(err)}`)
     }
 
-    // Guardar para contexto conversacional.
     guardarUltimoAnalisis(resultado)
 
-    const userMessages = [{ role: 'user', content: buildImageAnalysisPrompt(resultado) }]
-    const groqResponse = await callGroqStreaming(SYSTEM_PROMPT_BASE, userMessages)
+    // ── Construir el mensaje para Gemini ────────────────────────────────────
+    // Si hay Grad-CAM, se lo pasamos como imagen inline ANTES del texto,
+    // para que Gemini pueda anclar la interpretación espacialmente.
+    const userParts: GeminiPart[] = []
 
+    if (resultado.gradcamBase64) {
+        userParts.push({
+            inline_data: {
+                mime_type: 'image/png',
+                data: resultado.gradcamBase64,
+            },
+        })
+    }
+
+    userParts.push({
+        text: buildImageAnalysisPrompt(resultado, !!resultado.gradcamBase64),
+    })
+
+    const userMessages: GeminiMessage[] = [{ role: 'user', parts: userParts }]
+    const llmResponse = await callLLMStreaming(SYSTEM_PROMPT_BASE, userMessages)
+
+    // ── Inyectar el Grad-CAM al frontend ANTES del stream del LLM ──────────
+    // El frontend lo muestra visualmente; el LLM ya lo recibió para interpretarlo.
     if (resultado.gradcamBase64) {
         const gradcamChunk = `data: ${JSON.stringify({ gradcam: resultado.gradcamBase64 })}\n\n`
         const encoder = new TextEncoder()
@@ -264,8 +345,8 @@ async function handleImageMessage(imageBlock: ImageBlock): Promise<Response> {
         const readable = new ReadableStream({
             async start(controller) {
                 controller.enqueue(encoder.encode(gradcamChunk))
-                if (groqResponse.body) {
-                    const reader = groqResponse.body.getReader()
+                if (llmResponse.body) {
+                    const reader = llmResponse.body.getReader()
                     while (true) {
                         const { done, value } = await reader.read()
                         if (done) break
@@ -281,17 +362,48 @@ async function handleImageMessage(imageBlock: ImageBlock): Promise<Response> {
         })
     }
 
-    return groqResponse
+    return llmResponse
 }
 
-// ── Rama B: texto → Groq ─────────────────────────────────────────────────────
+// ── Rama B: texto → LLM ─────────────────────────────────────────────────────
 
 async function handleTextMessage(messages: IncomingMessage[]): Promise<Response> {
     const lastAnalysis  = obtenerUltimoAnalisis()
     const systemPrompt  = buildSystemPrompt(lastAnalysis)
-    const groqMessages  = normalizeMessagesForGroq(messages)
+    const llmMessages   = normalizeMessagesForLLM(messages)
 
-    return callGroqStreaming(systemPrompt, groqMessages)
+    // Si hay Grad-CAM guardado, lo inyectamos como contexto visual persistente.
+    // Se inserta como primer mensaje "user" con la imagen + una nota de contexto,
+    // seguido de un "model" que confirma haberlo recibido, para no romper el
+    // formato alternado user/model que exige Gemini.
+    if (lastAnalysis?.gradcamBase64) {
+        const gradcamContexto: GeminiMessage[] = [
+            {
+                role: 'user',
+                parts: [
+                    {
+                        inline_data: {
+                            mime_type: 'image/png',
+                            data: lastAnalysis.gradcamBase64,
+                        },
+                    },
+                    {
+                        text: 'Este es el mapa de calor Grad-CAM del análisis activo. ' +
+                            'Úsalo SOLO para ubicar espacialmente los hallazgos — ' +
+                            'los datos numéricos autoritativos están en tu contexto de sistema.',
+                    },
+                ],
+            },
+            {
+                role: 'assistant',
+                parts: [{ text: 'Entendido. Tengo el Grad-CAM como referencia espacial y los datos numéricos como fuente autoritativa.' }],
+            },
+            ...llmMessages,
+        ]
+        return callLLMStreaming(systemPrompt, gradcamContexto)
+    }
+
+    return callLLMStreaming(systemPrompt, llmMessages)
 }
 
 // ── Handler principal ────────────────────────────────────────────────────────
@@ -308,6 +420,6 @@ export async function POST(req: NextRequest) {
     const imageBlock = findImageInLastMessage(messages)
 
     return imageBlock
-        ? handleImageMessage(imageBlock)
+        ? handleVisionMessage(imageBlock)
         : handleTextMessage(messages)
 }
