@@ -1,11 +1,9 @@
 'use client'
 
-// Pantalla principal: subir radiografía → previsualizar → analizar → informe → guardar.
-// Ahora incluye paso de preview donde el usuario ve la imagen antes de confirmar.
-
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { HeaderApp } from '@/components/layout/header-app'
 import { ZonaSubida, InformeResultado, useAnalisis } from '@/features/analisis'
+import { useInformeActivo } from '@/features/analisis/informe-activo-context'
 import { useEstudios } from '@/features/estudios'
 import { usePacientes } from '@/features/pacientes'
 import { usePlan } from '@/components/plan'
@@ -17,20 +15,30 @@ export default function AnalizarPage() {
     const { guardar, puedoCrear, estudiosEsteMes } = useEstudios()
     const { pacientes, guardar: guardarPaciente } = usePacientes()
     const { limites } = usePlan()
+    const { setInformeActivo, limpiarInformeActivo } = useInformeActivo()
     const router = useRouter()
 
-    // Estado para selección/creación de paciente al guardar.
     const [mostrarGuardar, setMostrarGuardar] = useState(false)
     const [pacienteSeleccionado, setPacienteSeleccionado] = useState<string>('')
     const [nuevoPacienteNombre, setNuevoPacienteNombre] = useState('')
     const [notas, setNotas] = useState('')
 
+    // Cuando el análisis completa, expone el informe al ChatBubble global.
+    useEffect(() => {
+        if (estado.paso === 'completado') {
+            setInformeActivo(estado.informe)
+        }
+    }, [estado, setInformeActivo])
+
+    function handleReiniciar() {
+        limpiarInformeActivo()
+        reiniciar()
+    }
+
     function handleGuardar() {
         if (estado.paso !== 'completado') return
 
         let pacienteId: string | undefined
-
-        // Si escribió un nombre nuevo, crear paciente primero.
         if (nuevoPacienteNombre.trim()) {
             const nuevoPaciente = guardarPaciente({ nombre: nuevoPacienteNombre.trim() })
             pacienteId = nuevoPaciente.id
@@ -71,7 +79,7 @@ export default function AnalizarPage() {
                     />
                 )}
 
-                {/* Paso 2: Preview de la imagen seleccionada */}
+                {/* Paso 2: Preview */}
                 {estado.paso === 'preview' && (
                     <div style={{
                         maxWidth: 520, width: '100%', margin: '0 auto',
@@ -83,8 +91,6 @@ export default function AnalizarPage() {
                         }}>
                             Previsualización
                         </div>
-
-                        {/* Imagen preview */}
                         <div style={{
                             width: '100%', borderRadius: 16, overflow: 'hidden',
                             border: '2px solid var(--accent)', position: 'relative',
@@ -95,7 +101,6 @@ export default function AnalizarPage() {
                                 alt="Radiografía seleccionada"
                                 style={{ width: '100%', display: 'block' }}
                             />
-                            {/* Overlay con nombre del archivo */}
                             <div style={{
                                 position: 'absolute', bottom: 0, left: 0, right: 0,
                                 padding: '12px 16px',
@@ -114,11 +119,9 @@ export default function AnalizarPage() {
                                 </div>
                             </div>
                         </div>
-
-                        {/* Botones de acción */}
                         <div style={{ display: 'flex', gap: 12, width: '100%' }}>
                             <button
-                                onClick={reiniciar}
+                                onClick={handleReiniciar}
                                 style={{
                                     flex: 1, padding: '12px 20px', borderRadius: 10,
                                     background: 'var(--bg-3)', color: 'var(--t0)',
@@ -148,13 +151,12 @@ export default function AnalizarPage() {
                     </div>
                 )}
 
-                {/* Paso 3: Subiendo / Analizando — con preview visible */}
+                {/* Paso 3: Subiendo / Analizando */}
                 {(estado.paso === 'subiendo' || estado.paso === 'analizando') && (
                     <div style={{
                         maxWidth: 520, width: '100%', margin: '0 auto',
                         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20,
                     }}>
-                        {/* Imagen con overlay de progreso */}
                         <div style={{
                             width: '100%', borderRadius: 16, overflow: 'hidden',
                             border: '1px solid var(--border)', position: 'relative',
@@ -164,7 +166,6 @@ export default function AnalizarPage() {
                                 alt="Analizando..."
                                 style={{ width: '100%', display: 'block', filter: 'brightness(0.6)' }}
                             />
-                            {/* Overlay de análisis */}
                             <div style={{
                                 position: 'absolute', inset: 0,
                                 display: 'flex', flexDirection: 'column',
@@ -179,9 +180,7 @@ export default function AnalizarPage() {
                                 <div style={{ fontSize: 14, color: '#fff', fontWeight: 500 }}>
                                     {estado.paso === 'subiendo' ? 'Subiendo imagen...' : 'Analizando con el modelo...'}
                                 </div>
-                                <div style={{
-                                    fontFamily: 'var(--mono)', fontSize: 11, color: 'rgba(255,255,255,0.6)',
-                                }}>
+                                <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>
                                     {estado.nombreArchivo}
                                 </div>
                             </div>
@@ -190,18 +189,18 @@ export default function AnalizarPage() {
                     </div>
                 )}
 
-                {/* Paso 4: Resultado completado */}
+                {/* Paso 4: Completado */}
                 {estado.paso === 'completado' && !mostrarGuardar && (
                     <InformeResultado
                         informe={estado.informe}
                         imagenDataUrl={estado.imagenDataUrl}
                         gradcamBase64={estado.informe.gradcamBase64}
                         onGuardar={() => setMostrarGuardar(true)}
-                        onNuevo={reiniciar}
+                        onNuevo={handleReiniciar}
                     />
                 )}
 
-                {/* Paso 4b: Formulario de guardar con selección de paciente */}
+                {/* Paso 4b: Formulario guardar */}
                 {estado.paso === 'completado' && mostrarGuardar && (
                     <div style={{
                         maxWidth: 480, width: '100%', margin: '0 auto',
@@ -218,7 +217,6 @@ export default function AnalizarPage() {
                                 Guardar estudio
                             </div>
 
-                            {/* Seleccionar paciente existente */}
                             <label style={{ display: 'block', marginBottom: 12 }}>
                                 <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--t1)', display: 'block', marginBottom: 6 }}>
                                     Paciente existente
@@ -242,7 +240,6 @@ export default function AnalizarPage() {
                                 </select>
                             </label>
 
-                            {/* O crear nuevo paciente */}
                             <label style={{ display: 'block', marginBottom: 12 }}>
                                 <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--t1)', display: 'block', marginBottom: 6 }}>
                                     O crear nuevo paciente
@@ -263,7 +260,6 @@ export default function AnalizarPage() {
                                 />
                             </label>
 
-                            {/* Notas opcionales */}
                             <label style={{ display: 'block', marginBottom: 16 }}>
                                 <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--t1)', display: 'block', marginBottom: 6 }}>
                                     Notas (opcional)
@@ -282,7 +278,6 @@ export default function AnalizarPage() {
                                 />
                             </label>
 
-                            {/* Botones */}
                             <div style={{ display: 'flex', gap: 10 }}>
                                 <button
                                     onClick={() => setMostrarGuardar(false)}
@@ -313,15 +308,13 @@ export default function AnalizarPage() {
 
                 {/* Error */}
                 {estado.paso === 'error' && (
-                    <div style={{
-                        textAlign: 'center', padding: '48px 24px', maxWidth: 400,
-                    }}>
+                    <div style={{ textAlign: 'center', padding: '48px 24px', maxWidth: 400 }}>
                         <div style={{ fontSize: 28, marginBottom: 12 }}>⚠️</div>
                         <div style={{ fontSize: 14, color: 'var(--err)', marginBottom: 16 }}>
                             {estado.mensaje}
                         </div>
                         <button
-                            onClick={reiniciar}
+                            onClick={handleReiniciar}
                             style={{
                                 padding: '10px 24px', borderRadius: 10,
                                 background: 'var(--bg-3)', color: 'var(--t0)',
@@ -338,8 +331,7 @@ export default function AnalizarPage() {
                     <div style={{
                         marginTop: 16, padding: '12px 16px', borderRadius: 10,
                         border: '1px solid var(--warn)', background: 'var(--warn-bg)',
-                        color: 'var(--warn)', fontSize: 13, textAlign: 'center',
-                        maxWidth: 420,
+                        color: 'var(--warn)', fontSize: 13, textAlign: 'center', maxWidth: 420,
                     }}>
                         Has alcanzado el límite de {limites.estudiosPorMes} estudios/mes.
                         <a href="/upgrade" style={{ color: 'var(--accent)', marginLeft: 6 }}>

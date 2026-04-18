@@ -6,7 +6,8 @@
 // Ahora incluye selector de contexto (paciente + estudio) para dar info
 // detallada basada en datos reales.
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
+import { useParams } from 'next/navigation'
 import { ListaMensajes } from './lista-mensajes'
 import { BarraInput } from './barra-input'
 import { SelectorContexto } from './selector-contexto'
@@ -14,13 +15,12 @@ import { useChat } from '../hooks/use-chat'
 import { streamChat } from '../api'
 import { usePacientes } from '@/features/pacientes'
 import { useEstudios } from '@/features/estudios'
-import type { BloqueContenido, BloqueImagen, BloqueTexto, MensajeHistorial, Mensaje } from '../tipos'
+import { useInformeActivo } from '@/features/analisis/informe-activo-context'
+import type { BloqueContenido, MensajeHistorial, Mensaje } from '../tipos'
 import type { Estudio, Paciente } from '@/lib/tipos'
 
 interface ChatViewProps {
-    /** Si es compacto (dentro del bubble) se oculta el header. */
     readonly compacto?: boolean
-    /** Pre-seleccionar un estudio específico (desde /estudios/[id]/chat). */
     readonly estudioIdInicial?: string
 }
 
@@ -38,7 +38,6 @@ function extractBase64FromDataUrl(dataUrl: string): { data: string; mime: string
     return { data, mime }
 }
 
-/** Construye un bloque de contexto con los datos del estudio/paciente. */
 function buildContextBlock(
     paciente: Paciente | undefined,
     estudio: Estudio | undefined,
@@ -52,7 +51,6 @@ function buildContextBlock(
         if (paciente.notas) partes.push(`Notas del paciente: ${paciente.notas}`)
         partes.push(`Total de estudios: ${estudiosDelPaciente.length}`)
 
-        // Resumen de todos los estudios del paciente.
         if (estudiosDelPaciente.length > 0) {
             partes.push('\nHistorial de estudios del paciente:')
             estudiosDelPaciente.forEach((e, i) => {
@@ -94,16 +92,25 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
 
     const { pacientes } = usePacientes()
     const { estudios } = useEstudios()
+    const { informeActivo } = useInformeActivo()
 
-    // Estado del contexto seleccionado.
+    const params = useParams()
+    const idDeUrl = typeof params?.id === 'string' ? params.id : null
+
     const [pacienteId, setPacienteId] = useState<string | null>(null)
-    const [estudioId, setEstudioId] = useState<string | null>(estudioIdInicial ?? null)
+    const [estudioIdManual, setEstudioIdManual] = useState<string | null>(null)
+    const estudioId = estudioIdManual ?? estudioIdInicial ?? idDeUrl ?? null
 
     const pacienteActual = pacientes.find(p => p.id === pacienteId)
     const estudioActual = estudios.find(e => e.id === estudioId)
-    const estudiosDelPaciente = pacienteId
-        ? estudios.filter(e => e.pacienteId === pacienteId)
-        : []
+
+    // Prioridad: estudio guardado seleccionado > informe de sesión activa > null
+    const informeParaChat = estudioActual?.informe ?? informeActivo ?? null
+
+    const estudiosDelPaciente = useMemo(
+        () => pacienteId ? estudios.filter(e => e.pacienteId === pacienteId) : [],
+        [pacienteId, estudios],
+    )
 
     const handleSend = useCallback((text: string, imageB64?: string, imageMime?: string) => {
         if (!text.trim() && !imageB64) return
@@ -121,7 +128,6 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
                 return { role: m.rol === 'ai' ? 'assistant' as const : 'user' as const, content: m.contenido }
             })
 
-        // Construir el mensaje del usuario con contexto inyectado.
         const contextBlock = buildContextBlock(pacienteActual, estudioActual, estudiosDelPaciente)
         let userMessage = text || '(imagen adjunta)'
         if (contextBlock) {
@@ -136,13 +142,13 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
 
         startStream()
 
-        streamChat(history, {
+        void streamChat(history, informeParaChat, {
             onChunk: (chunk) => { hideTyping(); appendChunk(chunk) },
             onGradcam: (base64) => { attachGradcam(`data:image/png;base64,${base64}`) },
             onDone: () => { endStream() },
             onError: (err) => { hideTyping(); endStream(); console.error(err) },
         })
-    }, [messages, addMessage, startStream, appendChunk, endStream, attachGradcam, showTyping, hideTyping, pacienteActual, estudioActual, estudiosDelPaciente])
+    }, [messages, addMessage, startStream, appendChunk, endStream, attachGradcam, showTyping, hideTyping, pacienteActual, estudioActual, estudiosDelPaciente, informeParaChat])
 
     return (
         <div style={{
@@ -178,7 +184,6 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
                 </header>
             )}
 
-            {/* Selector de contexto — visible en modo compacto también */}
             {(pacientes.length > 0 || estudios.length > 0) && (
                 <div style={{
                     padding: '6px 10px', borderBottom: '1px solid var(--border)',
@@ -191,7 +196,7 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
                         estudioId={estudioId}
                         onCambio={(pId, eId) => {
                             setPacienteId(pId)
-                            setEstudioId(eId)
+                            setEstudioIdManual(eId)
                         }}
                     />
                 </div>

@@ -1,16 +1,14 @@
 // POST /api/chat
 // Lógica dual:
 //   • Mensaje con imagen  → FastAPI /predict (modelo de visión) → LLM interpreta
-//   • Mensaje solo texto  → LLM (con datos del último análisis como contexto)
+//   • Mensaje solo texto  → LLM (con informe del estudio activo como contexto)
 //
-// Ahora usa los módulos compartidos del sistema:
-//   - lib/modelo        → cliente tipado de FastAPI
-//   - lib/servidor      → estado del último análisis
-//   - lib/utils/umbrales → constantes clínicas
+// El informe ya no se lee de estado global en memoria — viene en el body del
+// request, enviado por el cliente desde useEstudios(). Esto permite que cada
+// usuario/estudio tenga su propio contexto sin interferencias.
 
 import { NextRequest } from 'next/server'
 import { predecirRadiografia, ModeloError } from '@/lib/modelo'
-import { obtenerUltimoAnalisis, guardarUltimoAnalisis } from '@/lib/servidor/estado-analisis'
 import { UMBRAL_PATOLOGIA, UMBRAL_YOUDEN, ETIQUETAS_CARCINOMA } from '@/lib/utils/umbrales'
 import type { ResultadoAnalisis } from '@/lib/tipos'
 
@@ -43,7 +41,6 @@ interface IncomingMessage {
     content: string | ContentBlock[]
 }
 
-// Bloque de contenido para el request a Gemini (mixto: texto + imagen)
 type GeminiPart =
     | { text: string }
     | { inline_data: { mime_type: string; data: string } }
@@ -95,26 +92,22 @@ function normalizeMessagesForLLM(messages: IncomingMessage[]): GeminiMessage[] {
 
 // ── Construcción de prompts ──────────────────────────────────────────────────
 
-/**
- * System prompt para conversación de seguimiento.
- * Inyecta el último análisis de forma estructurada y priorizada.
- */
-function buildSystemPrompt(analysis: ResultadoAnalisis | null): string {
-    if (!analysis) {
+function buildSystemPrompt(informe: ResultadoAnalisis | null): string {
+    if (!informe) {
         return SYSTEM_PROMPT_BASE + `\n\nNOTA: No hay ningún análisis de imagen cargado en esta sesión. Si el usuario pregunta sobre resultados, indícalo.`
     }
 
     const umbralPct    = Math.round(UMBRAL_YOUDEN * 100)
-    const carcinomaPct = Math.round(analysis.probabilidadCarcinoma * 100)
-    const esPositivo   = analysis.probabilidadCarcinoma >= UMBRAL_YOUDEN
+    const carcinomaPct = Math.round(informe.probabilidadCarcinoma * 100)
+    const esPositivo   = informe.probabilidadCarcinoma >= UMBRAL_YOUDEN
 
-    const relevantes = Object.entries(analysis.patologias)
+    const relevantes = Object.entries(informe.patologias)
         .filter(([name, prob]) => !ETIQUETAS_CARCINOMA.includes(name) && prob > UMBRAL_PATOLOGIA)
         .sort(([, a], [, b]) => b - a)
         .map(([name, prob]) => `    • ${name}: ${Math.round(prob * 100)}%`)
         .join('\n')
 
-    const noRelevantes = Object.entries(analysis.patologias)
+    const noRelevantes = Object.entries(informe.patologias)
         .filter(([name, prob]) => !ETIQUETAS_CARCINOMA.includes(name) && prob <= UMBRAL_PATOLOGIA)
         .sort(([, a], [, b]) => b - a)
         .map(([name, prob]) => `    • ${name}: ${Math.round(prob * 100)}%`)
@@ -125,7 +118,7 @@ function buildSystemPrompt(analysis: ResultadoAnalisis | null): string {
 ══════════════════════════════════════════════
 ANÁLISIS DISPONIBLE (modelo de visión computacional)
 ══════════════════════════════════════════════
-▶ VEREDICTO: ${analysis.etiquetaCarcinoma}
+▶ VEREDICTO: ${informe.etiquetaCarcinoma}
 ▶ PROBABILIDAD DE CARCINOMA: ${carcinomaPct}% ${esPositivo ? '⚠️ POR ENCIMA DEL UMBRAL' : '✓ Por debajo del umbral'}
 ▶ UMBRAL DE CORTE (índice Youden): ${umbralPct}%
 
@@ -144,10 +137,6 @@ Al responder preguntas del médico:
     return SYSTEM_PROMPT_BASE + contexto
 }
 
-/**
- * User prompt para el análisis inicial de imagen.
- * Si hay Grad-CAM, avisa a Gemini que lo tiene y cómo debe usarlo.
- */
 function buildImageAnalysisPrompt(data: ResultadoAnalisis, conGradcam: boolean): string {
     const umbralPct    = Math.round(UMBRAL_YOUDEN * 100)
     const carcinomaPct = Math.round(data.probabilidadCarcinoma * 100)
@@ -165,7 +154,6 @@ function buildImageAnalysisPrompt(data: ResultadoAnalisis, conGradcam: boolean):
         .map(([name, prob]) => `  • ${name}: ${Math.round(prob * 100)}%`)
         .join('\n')
 
-    // Instrucción de Grad-CAM solo si está disponible
     const instruccionGradcam = conGradcam
         ? `MAPA DE CALOR GRAD-CAM (adjunto como imagen):
   • Zonas ROJAS/CÁLIDAS → mayor atención del modelo de visión
@@ -223,7 +211,6 @@ async function callLLMStreaming(
     if (!AI_URL)   return sseError('AI_API_URL no configurada en .env')
     if (!AI_MODEL) return sseError('AI_MODEL no configurado en .env')
 
-    // Gemini nativa: convierte GeminiMessage[] directamente (ya vienen con parts tipados)
     const contents = messages.map(msg => ({
         role:  msg.role === 'assistant' ? 'model' : 'user',
         parts: msg.parts,
@@ -252,7 +239,6 @@ async function callLLMStreaming(
         return sseError(`Error del servicio de lenguaje (${llmRes.status}): ${await llmRes.text()}`)
     }
 
-    // Adaptar el formato SSE de Gemini al formato que espera el frontend
     const encoder = new TextEncoder()
     const readable = new ReadableStream({
         async start(controller) {
@@ -313,11 +299,8 @@ async function handleVisionMessage(imageBlock: ImageBlock): Promise<Response> {
         return sseError(`Error inesperado: ${String(err)}`)
     }
 
-    guardarUltimoAnalisis(resultado)
-
-    // ── Construir el mensaje para Gemini ────────────────────────────────────
-    // Si hay Grad-CAM, se lo pasamos como imagen inline ANTES del texto,
-    // para que Gemini pueda anclar la interpretación espacialmente.
+    // Sin guardarUltimoAnalisis() — el resultado viaja por el stream al cliente,
+    // que lo persistirá en useEstudios() si el usuario decide guardar el estudio.
     const userParts: GeminiPart[] = []
 
     if (resultado.gradcamBase64) {
@@ -336,8 +319,6 @@ async function handleVisionMessage(imageBlock: ImageBlock): Promise<Response> {
     const userMessages: GeminiMessage[] = [{ role: 'user', parts: userParts }]
     const llmResponse = await callLLMStreaming(SYSTEM_PROMPT_BASE, userMessages)
 
-    // ── Inyectar el Grad-CAM al frontend ANTES del stream del LLM ──────────
-    // El frontend lo muestra visualmente; el LLM ya lo recibió para interpretarlo.
     if (resultado.gradcamBase64) {
         const gradcamChunk = `data: ${JSON.stringify({ gradcam: resultado.gradcamBase64 })}\n\n`
         const encoder = new TextEncoder()
@@ -367,26 +348,20 @@ async function handleVisionMessage(imageBlock: ImageBlock): Promise<Response> {
 
 // ── Rama B: texto → LLM ─────────────────────────────────────────────────────
 
-async function handleTextMessage(messages: IncomingMessage[]): Promise<Response> {
-    const lastAnalysis  = obtenerUltimoAnalisis()
-    const systemPrompt  = buildSystemPrompt(lastAnalysis)
-    const llmMessages   = normalizeMessagesForLLM(messages)
+async function handleTextMessage(
+    messages: IncomingMessage[],
+    informe: ResultadoAnalisis | null,
+): Promise<Response> {
+    // El informe viene del cliente — no hay estado global de servidor.
+    const systemPrompt = buildSystemPrompt(informe)
+    const llmMessages  = normalizeMessagesForLLM(messages)
 
-    // Si hay Grad-CAM guardado, lo inyectamos como contexto visual persistente.
-    // Se inserta como primer mensaje "user" con la imagen + una nota de contexto,
-    // seguido de un "model" que confirma haberlo recibido, para no romper el
-    // formato alternado user/model que exige Gemini.
-    if (lastAnalysis?.gradcamBase64) {
+    if (informe?.gradcamBase64) {
         const gradcamContexto: GeminiMessage[] = [
             {
                 role: 'user',
                 parts: [
-                    {
-                        inline_data: {
-                            mime_type: 'image/png',
-                            data: lastAnalysis.gradcamBase64,
-                        },
-                    },
+                    { inline_data: { mime_type: 'image/png', data: informe.gradcamBase64 } },
                     {
                         text: 'Este es el mapa de calor Grad-CAM del análisis activo. ' +
                             'Úsalo SOLO para ubicar espacialmente los hallazgos — ' +
@@ -409,17 +384,17 @@ async function handleTextMessage(messages: IncomingMessage[]): Promise<Response>
 // ── Handler principal ────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-    let body: { messages: IncomingMessage[] }
+    let body: { messages: IncomingMessage[]; informe?: ResultadoAnalisis | null }
     try {
         body = await req.json()
     } catch {
         return new Response('Body inválido', { status: 400 })
     }
 
-    const { messages } = body
+    const { messages, informe } = body
     const imageBlock = findImageInLastMessage(messages)
 
     return imageBlock
         ? handleVisionMessage(imageBlock)
-        : handleTextMessage(messages)
+        : handleTextMessage(messages, informe ?? null)
 }

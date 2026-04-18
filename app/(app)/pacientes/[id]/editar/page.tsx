@@ -1,7 +1,5 @@
 'use client'
 
-// Formulario de edición de un paciente.
-
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { HeaderApp } from '@/components/layout/header-app'
@@ -14,17 +12,19 @@ export default function EditarPacientePage() {
     const id = typeof params.id === 'string' ? params.id : ''
     const paciente = obtener(id)
 
-    const [nombre, setNombre] = useState('')
-    const [fechaNac, setFechaNac] = useState('')
-    const [notas, setNotas] = useState('')
+    const [nombre, setNombre] = useState(paciente?.nombre ?? '')
+    const [fechaNac, setFechaNac] = useState(paciente?.fechaNacimiento ?? '')
+    const [notas, setNotas] = useState(paciente?.notas ?? '')
 
+    // Solo sincroniza si el paciente carga después del montaje (hidratación desde localStorage).
+    // Se usa una ref implícita via key del efecto para no re-ejecutar en cada render.
     useEffect(() => {
-        if (paciente) {
-            setNombre(paciente.nombre)
-            setFechaNac(paciente.fechaNacimiento ?? '')
-            setNotas(paciente.notas ?? '')
-        }
-    }, [paciente])
+        if (!paciente) return
+        setNombre(paciente.nombre)
+        setFechaNac(paciente.fechaNacimiento ?? '')
+        setNotas(paciente.notas ?? '')
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [paciente?.nombre, paciente?.fechaNacimiento, paciente?.notas])
 
     if (!paciente) {
         return (

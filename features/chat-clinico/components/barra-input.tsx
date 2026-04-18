@@ -1,8 +1,5 @@
 'use client'
 
-// Barra de entrada del chat: texto + adjuntar imagen + drag/drop + paste.
-// Réplica fiel de InputBar.tsx movida a la feature.
-
 import { useState, useRef, useEffect } from 'react'
 
 interface BarraInputProps {
@@ -26,6 +23,18 @@ export function BarraInput({ onSend, disabled }: BarraInputProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const fileRef = useRef<HTMLInputElement>(null)
     const dragCounterRef = useRef(0)
+
+    // Declarada antes de los useEffect para que el de drag/drop pueda referenciarla.
+    function readImageFile(file: File) {
+        const reader = new FileReader()
+        reader.onload = ev => {
+            const d = ev.target?.result as string
+            const mime = file.type || 'image/jpeg'
+            const b64 = d.split(',')[1]
+            setPendingImg({ b64, mime, name: file.name, dataUrl: d })
+        }
+        reader.readAsDataURL(file)
+    }
 
     useEffect(() => {
         const el = textareaRef.current
@@ -64,17 +73,6 @@ export function BarraInput({ onSend, disabled }: BarraInputProps) {
             window.removeEventListener('drop', onDrop)
         }
     }, [])
-
-    function readImageFile(file: File) {
-        const reader = new FileReader()
-        reader.onload = ev => {
-            const d = ev.target?.result as string
-            const mime = file.type || 'image/jpeg'
-            const b64 = d.split(',')[1]
-            setPendingImg({ b64, mime, name: file.name, dataUrl: d })
-        }
-        reader.readAsDataURL(file)
-    }
 
     function handlePaste(e: React.ClipboardEvent) {
         const items = e.clipboardData?.items

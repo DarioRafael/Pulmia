@@ -1,9 +1,12 @@
+'use client'
+
 // Cliente del endpoint `/api/chat`.
 // Parsea los dos formatos de SSE que el route handler puede devolver:
 //   • FastAPI  → data: { text, gradcam? }
 //   • Groq     → data: { choices:[{ delta:{ content } }] }
 
 import type { MensajeHistorial } from './tipos'
+import type { InformeAnalisis } from '@/lib/tipos'
 
 export interface CallbacksStream {
     readonly onChunk: (chunk: string) => void
@@ -14,11 +17,16 @@ export interface CallbacksStream {
 
 /**
  * Envía el historial al endpoint de chat y procesa el stream SSE chunk a chunk.
- * Los callbacks permiten al consumidor reaccionar a cada evento sin acoplarse
- * al formato del protocolo.
+ *
+ * @param mensajes - Historial de mensajes de la conversación.
+ * @param informe  - Informe del estudio activo. Se pasa directamente al servidor
+ *                   para que Gemini tenga contexto sin depender de estado en memoria.
+ *                   Cuando haya Supabase, este valor vendrá de la base de datos.
+ * @param callbacks - Reacciones a cada evento del stream.
  */
 export async function streamChat(
     mensajes: readonly MensajeHistorial[],
+    informe: InformeAnalisis | null,
     callbacks: CallbacksStream,
 ): Promise<void> {
     let res: Response
@@ -26,7 +34,7 @@ export async function streamChat(
         res = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages: mensajes }),
+            body: JSON.stringify({ messages: mensajes, informe }),
         })
     } catch (err) {
         callbacks.onError(new Error(`Sin conexión: ${String(err)}`))
@@ -55,7 +63,6 @@ export async function streamChat(
 
             buffer += decoder.decode(value, { stream: true })
 
-            // Procesar todas las líneas completas disponibles.
             const lines = buffer.split('\n')
             buffer = lines.pop() ?? ''
 
