@@ -12,8 +12,77 @@ import { predecirRadiografia, ModeloError } from '@/lib/modelo'
 import { UMBRAL_PATOLOGIA, UMBRAL_YOUDEN, ETIQUETAS_CARCINOMA } from '@/lib/utils/umbrales'
 import type { ResultadoAnalisis } from '@/lib/tipos'
 
+// ── API Keys con fallback persistente ────────────────────────────────────────
+//
+// En el .env puedes definir múltiples claves con el mismo nombre usando un
+// sufijo numérico opcional:
+//
+//   AI_API_KEY_1=AIzaSy...   ← primera clave
+//   AI_API_KEY_2=AIzaSy...   ← segunda clave
+//   AI_API_KEY_3=AIzaSy...   ← tercera clave
+//   AI_API_KEY=AIzaSy...     ← también se acepta sin sufijo (actúa como _1)
+//
+// Si una clave falla (tokens agotados, 429, 401, etc.) se marca como fallida
+// y NUNCA se vuelve a usar en el ciclo de vida actual del servidor.
+// Las peticiones siguientes arrancan desde la primera clave NO fallida.
+
+function loadApiKeys(): string[] {
+    const keys: string[] = []
+
+    // Acepta AI_API_KEY, AI_API_KEY_1, AI_API_KEY_2, ... AI_API_KEY_N
+    const base = process.env.AI_API_KEY
+    if (base?.trim()) keys.push(base.trim())
+
+    let i = 1
+    while (true) {
+        const k = process.env[`AI_API_KEY_${i}`]
+        if (!k?.trim()) break
+        // Evitar duplicados si AI_API_KEY y AI_API_KEY_1 son iguales
+        if (!keys.includes(k.trim())) keys.push(k.trim())
+        i++
+    }
+
+    return keys
+}
+
+const API_KEYS: string[] = loadApiKeys()
+
+// Índice de la primera clave todavía válida (nunca retrocede)
+let currentKeyIndex = 0
+
+// Conjunto de índices que ya fallaron permanentemente
+const failedKeyIndices = new Set<number>()
+
+/**
+ * Devuelve el índice de la próxima clave disponible a partir de `startIndex`.
+ * Retorna -1 si todas las claves están agotadas.
+ */
+function getNextAvailableKeyIndex(startIndex: number): number {
+    for (let i = startIndex; i < API_KEYS.length; i++) {
+        if (!failedKeyIndices.has(i)) return i
+    }
+    return -1
+}
+
+/**
+ * Marca una clave como fallida de forma permanente y avanza el índice global.
+ */
+function markKeyAsFailed(index: number): void {
+    failedKeyIndices.add(index)
+    // Avanzar currentKeyIndex hasta la próxima clave válida
+    currentKeyIndex = getNextAvailableKeyIndex(index + 1)
+    if (currentKeyIndex === -1) {
+        console.error('[API Keys] Todas las API keys han fallado.')
+    } else {
+        console.warn(
+            `[API Keys] Clave #${index + 1} marcada como fallida. ` +
+            `Usando clave #${currentKeyIndex + 1} en adelante.`
+        )
+    }
+}
+
+// ── Config estática ───────────────────────────────────────────────────────────
 const AI_URL   = process.env.AI_API_URL  ?? ''
-const AI_KEY   = process.env.AI_API_KEY  ?? ''
 const AI_MODEL = process.env.AI_MODEL    ?? ''
 
 // ── System prompt base ───────────────────────────────────────────────────────
@@ -201,50 +270,105 @@ Con base EXCLUSIVAMENTE en los datos anteriores (y el Grad-CAM para ubicación e
 Redacta en tono clínico profesional. No menciones que eres una IA.`
 }
 
-// ── Llamada al servicio de lenguaje con streaming ────────────────────────────
+// ── Llamada al servicio de lenguaje con streaming y fallback de API keys ──────
+
+/**
+ * Determina si un código HTTP indica que la clave está agotada o inválida
+ * (y por lo tanto debe marcarse como fallida de forma permanente).
+ */
+function isKeyExhaustedError(status: number, body: string): boolean {
+    // 429 = rate limit / cuota agotada
+    // 401 = clave inválida o revocada
+    if (status === 401) return true
+    if (status === 429) {
+        // Gemini devuelve 429 tanto para rate-limit temporal como para cuota diaria agotada.
+        // Consideramos ambos casos como "clave agotada" para el fallback.
+        return true
+    }
+    // 403 con mensaje de cuota
+    if (status === 403 && body.toLowerCase().includes('quota')) return true
+    return false
+}
 
 async function callLLMStreaming(
     systemPrompt: string,
     messages: GeminiMessage[],
 ): Promise<Response> {
-    if (!AI_KEY)   return sseError('AI_API_KEY no configurada en .env')
     if (!AI_URL)   return sseError('AI_API_URL no configurada en .env')
     if (!AI_MODEL) return sseError('AI_MODEL no configurado en .env')
+    if (API_KEYS.length === 0) return sseError('No hay ninguna AI_API_KEY configurada en .env')
 
     const contents = messages.map(msg => ({
         role:  msg.role === 'assistant' ? 'model' : 'user',
         parts: msg.parts,
     }))
 
-    let llmRes: Response
-    try {
-        llmRes = await fetch(`${AI_URL}/${AI_MODEL}:streamGenerateContent?alt=sse&key=${AI_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                system_instruction: {
-                    parts: [{ text: systemPrompt }],
-                },
-                contents,
-                generationConfig: {
-                    temperature: 0.3,
-                },
-            }),
-        })
-    } catch (err) {
-        return sseError(`No se pudo conectar con el servicio de lenguaje: ${err}`)
+    const requestBody = JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents,
+        generationConfig: { temperature: 0.3 },
+    })
+
+    // Intentar con cada clave disponible en orden, sin retroceder
+    let keyIndex = getNextAvailableKeyIndex(currentKeyIndex)
+
+    while (keyIndex !== -1) {
+        const apiKey = API_KEYS[keyIndex]
+
+        let llmRes: Response
+        try {
+            llmRes = await fetch(
+                `${AI_URL}/${AI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`,
+                {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    requestBody,
+                }
+            )
+        } catch (err) {
+            // Error de red — no marcamos la clave como fallida, puede ser transitorio
+            return sseError(`No se pudo conectar con el servicio de lenguaje: ${err}`)
+        }
+
+        if (llmRes.ok) {
+            // ✅ Clave funcionó — actualizar el índice global si avanzó
+            if (keyIndex > currentKeyIndex) currentKeyIndex = keyIndex
+            return buildStreamingResponse(llmRes)
+        }
+
+        // La respuesta no fue OK — leer el cuerpo para decidir si es fallo permanente
+        const errorBody = await llmRes.text()
+
+        if (isKeyExhaustedError(llmRes.status, errorBody)) {
+            console.warn(
+                `[API Keys] Clave #${keyIndex + 1} rechazada ` +
+                `(HTTP ${llmRes.status}). Marcando como fallida.`
+            )
+            markKeyAsFailed(keyIndex)
+            // Intentar con la siguiente
+            keyIndex = getNextAvailableKeyIndex(keyIndex + 1)
+            continue
+        }
+
+        // Error no relacionado con la clave (ej. payload inválido) — no hacer fallback
+        return sseError(`Error del servicio de lenguaje (${llmRes.status}): ${errorBody}`)
     }
 
-    if (!llmRes.ok) {
-        return sseError(`Error del servicio de lenguaje (${llmRes.status}): ${await llmRes.text()}`)
-    }
+    // Todas las claves están agotadas
+    return sseError(
+        'Todas las API keys configuradas han alcanzado su límite o son inválidas. ' +
+        'Por favor, revisa las variables AI_API_KEY en tu .env y reinicia el servidor.'
+    )
+}
 
+/** Construye la Response de streaming SSE a partir de la respuesta HTTP de Gemini */
+function buildStreamingResponse(llmRes: Response): Response {
     const encoder = new TextEncoder()
     const readable = new ReadableStream({
         async start(controller) {
-            const reader = llmRes.body!.getReader()
+            const reader  = llmRes.body!.getReader()
             const decoder = new TextDecoder()
-            let buffer = ''
+            let buffer    = ''
 
             while (true) {
                 const { done, value } = await reader.read()

@@ -1,29 +1,31 @@
 @import "tailwindcss";
 
 :root {
-  /* ── Fondos — azul pizarra clínico profundo ── */
-  --bg-0: #060810;
-  --bg-1: #090c18;
-  --bg-2: #0d1020;
-  --bg-3: #111428;
-  --bg-glass: rgba(13, 16, 32, 0.85);
+  /* ── Fondos — gris oscuro neutro, sin tinte azul ── */
+  --bg-0: #0c0c0d;
+  --bg-1: #111113;
+  --bg-2: #18181b;
+  --bg-3: #202024;
+  --bg-glass: rgba(17, 17, 19, 0.88);
 
-  /* ── Bordes con tinte azul frío ── */
-  --border: #161c34;
-  --border-h: #1f2844;
-  --border-focus: rgba(37, 99, 200, 0.5);
+  /* ── Bordes neutros ── */
+  --border: #27272a;
+  --border-h: #3f3f46;
+  /* Borde de selección/foco: único uso del azul en modo oscuro */
+  --border-focus: rgba(59, 130, 246, 0.55);
+  --border-sel: #3b82f6;
 
-  /* ── Acento — azul cobalto de confianza clínica ── */
-  --accent: #2b6be0;
-  --accent-h: #4a87f0;
-  --accent-d: #1a50b8;
-  --accent-glow: rgba(43, 107, 224, 0.18);
+  /* ── Acento — azul solo para estados activos y selección ── */
+  --accent: #3b82f6;
+  --accent-h: #60a5fa;
+  --accent-d: #2563eb;
+  --accent-glow: rgba(59, 130, 246, 0.12);
 
-  /* ── Texto con temperatura fría ── */
-  --t0: #e8edf8;
-  --t1: #6a7a9e;
-  --t2: #323d58;
-  --t3: #181f35;
+  /* ── Texto — blanco puro y grises neutros ── */
+  --t0: #f4f4f5;
+  --t1: #a1a1aa;
+  --t2: #71717a;
+  --t3: #3f3f46;
 
   /* ── Estados clínicos ── */
   --ok: #2eb87a;
@@ -50,10 +52,10 @@
   --ta: 0.12s ease;
   --ts: 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* ── Sombras ── */
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
-  --shadow-md: 0 4px 16px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.3);
-  --shadow-accent: 0 0 20px rgba(43, 107, 224, 0.25);
+  /* ── Sombras — neutras, sin color ── */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.4);
+  --shadow-accent: 0 0 0 3px rgba(59, 130, 246, 0.18);
 }
 
 [data-theme='light'] {
@@ -120,7 +122,7 @@ body {
 
 /* ── Search highlight ───────────────────────────────────────────────── */
 mark {
-  background: rgba(43, 107, 224, 0.2);
+  background: var(--accent-glow);
   border-radius: 2px;
   padding: 1px 2px;
   color: var(--accent-h);
@@ -195,7 +197,7 @@ mark {
 
 /* ── Search match outline ───────────────────────────────────────────── */
 .bubble.search-match {
-  outline: 1px solid rgba(43, 107, 224, 0.35);
+  outline: 1px solid rgba(59, 130, 246, 0.35);
   outline-offset: 3px;
   border-radius: var(--r8);
 }
