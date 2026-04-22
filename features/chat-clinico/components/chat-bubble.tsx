@@ -1,9 +1,9 @@
 'use client'
 
-// Ventana flotante del chat clínico.
-// Ya NO tiene botón circular propio — se controla desde afuera mediante
-// ChatBubbleContext. El HeaderApp (u otro componente) llama a openChat()
-// para abrir/cerrar la ventana.
+// Ventana del chat clínico.
+// Estado por defecto  = panel lateral pegado al borde derecho, altura completa.
+// Estado flotante     = ventana 400×520 arrastrable libre (pop-out).
+// Se controla desde fuera con ChatBubbleContext (useChatBubble).
 
 import { useState, useRef, useEffect, useCallback, createContext, useContext } from 'react'
 import { ChatView } from './chat-view'
@@ -24,29 +24,33 @@ export function useChatBubble() {
         return ctx
 }
 
-// ── Provider + ventana flotante ─────────────────────────────────────────────
+// ── Provider + ventana ──────────────────────────────────────────────────────
 export function ChatBubbleProvider({ children }: { children: React.ReactNode }) {
-        const [open, setOpen]       = useState(false)
+        const [open, setOpen]         = useState(false)
         const [floating, setFloating] = useState(false)
-        const [pos, setPos]         = useState({ x: 0, y: 80 })
-        const dragging              = useRef(false)
-        const dragOffset            = useRef({ x: 0, y: 0 })
-        const windowRef             = useRef<HTMLDivElement>(null)
-        const initialised           = useRef(false)
-
-        // Posición inicial: esquina superior derecha
-        useEffect(() => {
-                if (!initialised.current) {
-                        setPos({ x: window.innerWidth - 440, y: 80 })
-                        initialised.current = true
-                }
-        }, [])
+        const [pos, setPos]           = useState({ x: 0, y: 80 })
+        const dragging                = useRef(false)
+        const dragOffset              = useRef({ x: 0, y: 0 })
+        const windowRef               = useRef<HTMLDivElement>(null)
 
         const toggle    = useCallback(() => setOpen(v => !v), [])
         const openChat  = useCallback(() => setOpen(true), [])
-        const closeChat = useCallback(() => setOpen(false), [])
+        const closeChat = useCallback(() => { setOpen(false); setFloating(false) }, [])
 
-        // ── Drag ──────────────────────────────────────────────────────────────────
+        // Al activar el modo flotante, centrar la ventana en pantalla
+        const handlePopOut = useCallback(() => {
+                setFloating(v => {
+                        if (!v) {
+                                setPos({
+                                        x: window.innerWidth  / 2 - 200,
+                                        y: window.innerHeight / 2 - 260,
+                                })
+                        }
+                        return !v
+                })
+        }, [])
+
+        // ── Drag (solo en modo flotante) ─────────────────────────────────────────
         const onMouseDown = useCallback((e: React.MouseEvent) => {
                 if (!floating) return
                 dragging.current = true
@@ -71,42 +75,59 @@ export function ChatBubbleProvider({ children }: { children: React.ReactNode }) 
                 }
         }, [])
 
-        const windowStyle: React.CSSProperties = floating
-            ? { position: 'fixed', top: pos.y, left: pos.x, bottom: 'auto', right: 'auto' }
-            : { position: 'fixed', bottom: 80, right: 24 }
+        // ── Estilos según modo ───────────────────────────────────────────────────
+        const panelStyle: React.CSSProperties = {
+                position:   'fixed',
+                top:        56,
+                right:      0,
+                width:      400,
+                height:     'calc(100vh - 56px)',
+                borderLeft: '1px solid var(--border)',
+                borderRadius: 0,
+                boxShadow:  '-8px 0 32px rgba(0,0,0,0.3)',
+        }
+
+        const floatStyle: React.CSSProperties = {
+                position:     'fixed',
+                top:          pos.y,
+                left:         pos.x,
+                width:        400,
+                height:       520,
+                borderRadius: 16,
+                border:       '1px solid var(--border-h)',
+                boxShadow:    '0 12px 48px rgba(0,0,0,0.5), 0 4px 16px rgba(0,0,0,0.3)',
+        }
+
+        const containerStyle: React.CSSProperties = {
+                ...(floating ? floatStyle : panelStyle),
+                overflow:      'hidden',
+                zIndex:        1000,
+                display:       'flex',
+                flexDirection: 'column',
+                background:    'var(--bg-0)',
+                animation:     'chat-bubble-in 0.2s ease both',
+        }
 
         return (
             <ChatBubbleContext.Provider value={{ open, toggle, openChat, closeChat }}>
                     {children}
 
                     {open && (
-                        <div
-                            ref={windowRef}
-                            style={{
-                                    ...windowStyle,
-                                    width: 400, height: 520,
-                                    borderRadius: 16,
-                                    overflow: 'hidden',
-                                    border: '1px solid var(--border-h)',
-                                    boxShadow: '0 12px 48px rgba(0,0,0,0.5), 0 4px 16px rgba(0,0,0,0.3)',
-                                    zIndex: 1000,
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    animation: 'chat-bubble-in 0.2s ease both',
-                            }}
-                        >
-                                {/* Header ------------------------------------------------ */}
+                        <div ref={windowRef} style={containerStyle}>
+
+                                {/* Header */}
                                 <div
                                     onMouseDown={onMouseDown}
                                     style={{
                                             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                            padding: '10px 14px', background: 'var(--bg-1)',
-                                            borderBottom: '1px solid var(--border)', flexShrink: 0,
+                                            padding: '10px 14px',
+                                            background: 'var(--bg-1)',
+                                            borderBottom: '1px solid var(--border)',
+                                            flexShrink: 0,
                                             cursor: floating ? 'grab' : 'default',
                                             userSelect: 'none',
                                     }}
                                 >
-                                        {/* Left: icon + title */}
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                                 <div style={{
                                                         width: 24, height: 24, borderRadius: 'var(--r4)',
@@ -123,11 +144,10 @@ export function ChatBubbleProvider({ children }: { children: React.ReactNode }) 
                             </span>
                                         </div>
 
-                                        {/* Right: pop-out toggle + close */}
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                                 <button
-                                                    onClick={() => setFloating(v => !v)}
-                                                    title={floating ? 'Anclar ventana' : 'Hacer ventana libre'}
+                                                    onClick={handlePopOut}
+                                                    title={floating ? 'Anclar panel' : 'Hacer ventana libre'}
                                                     style={{
                                                             width: 26, height: 26, borderRadius: 'var(--r4)',
                                                             background: floating ? 'rgba(43,107,224,0.15)' : 'transparent',
@@ -164,7 +184,7 @@ export function ChatBubbleProvider({ children }: { children: React.ReactNode }) 
                                         </div>
                                 </div>
 
-                                {/* Chat embebido ---------------------------------------- */}
+                                {/* Chat embebido */}
                                 <div style={{ flex: 1, overflow: 'hidden' }}>
                                         <ChatView compacto />
                                 </div>
@@ -173,7 +193,7 @@ export function ChatBubbleProvider({ children }: { children: React.ReactNode }) 
 
                     <style>{`
                 @keyframes chat-bubble-in {
-                    from { opacity: 0; transform: translateY(12px) scale(0.95); }
+                    from { opacity: 0; transform: translateX(16px); }
                     to   { opacity: 1; transform: none; }
                 }
             `}</style>
