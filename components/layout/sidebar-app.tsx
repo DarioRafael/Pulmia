@@ -140,7 +140,7 @@ export function SidebarApp({ collapsed, onToggle }: SidebarAppProps) {
                 {!collapsed && (
                     <div>
                         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--t0)', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
-                            SistemaCP
+                            SistemaCaPu
                         </div>
                         <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--t2)', letterSpacing: '0.04em', marginTop: 2 }}>
                             Carcinoma Pulmonar

@@ -25,6 +25,9 @@ import type { ResultadoAnalisis } from '@/lib/tipos'
 // Si una clave falla (tokens agotados, 429, 401, etc.) se marca como fallida
 // y NUNCA se vuelve a usar en el ciclo de vida actual del servidor.
 // Las peticiones siguientes arrancan desde la primera clave NO fallida.
+//
+// NOTA: el estado se guarda en globalThis para sobrevivir hot-reloads de Next.js
+// en desarrollo sin perder el seguimiento de claves fallidas.
 
 function loadApiKeys(): string[] {
     const keys: string[] = []
@@ -33,13 +36,12 @@ function loadApiKeys(): string[] {
     const base = process.env.AI_API_KEY
     if (base?.trim()) keys.push(base.trim())
 
-    let i = 1
-    while (true) {
+    // Escanear hasta AI_API_KEY_20 para no depender de gaps en la numeración
+    for (let i = 1; i <= 20; i++) {
         const k = process.env[`AI_API_KEY_${i}`]
-        if (!k?.trim()) break
+        if (!k?.trim()) continue
         // Evitar duplicados si AI_API_KEY y AI_API_KEY_1 son iguales
         if (!keys.includes(k.trim())) keys.push(k.trim())
-        i++
     }
 
     return keys
@@ -47,11 +49,17 @@ function loadApiKeys(): string[] {
 
 const API_KEYS: string[] = loadApiKeys()
 
-// Índice de la primera clave todavía válida (nunca retrocede)
-let currentKeyIndex = 0
+// ── Estado persistente en globalThis (sobrevive hot-reloads) ─────────────────
+declare global {
+    // eslint-disable-next-line no-var
+    var __apiKeyState: { currentKeyIndex: number; failedKeyIndices: Set<number> } | undefined
+}
 
-// Conjunto de índices que ya fallaron permanentemente
-const failedKeyIndices = new Set<number>()
+if (!globalThis.__apiKeyState) {
+    globalThis.__apiKeyState = { currentKeyIndex: 0, failedKeyIndices: new Set<number>() }
+}
+
+const keyState = globalThis.__apiKeyState
 
 /**
  * Devuelve el índice de la próxima clave disponible a partir de `startIndex`.
@@ -59,7 +67,7 @@ const failedKeyIndices = new Set<number>()
  */
 function getNextAvailableKeyIndex(startIndex: number): number {
     for (let i = startIndex; i < API_KEYS.length; i++) {
-        if (!failedKeyIndices.has(i)) return i
+        if (!keyState.failedKeyIndices.has(i)) return i
     }
     return -1
 }
@@ -68,15 +76,15 @@ function getNextAvailableKeyIndex(startIndex: number): number {
  * Marca una clave como fallida de forma permanente y avanza el índice global.
  */
 function markKeyAsFailed(index: number): void {
-    failedKeyIndices.add(index)
+    keyState.failedKeyIndices.add(index)
     // Avanzar currentKeyIndex hasta la próxima clave válida
-    currentKeyIndex = getNextAvailableKeyIndex(index + 1)
-    if (currentKeyIndex === -1) {
+    keyState.currentKeyIndex = getNextAvailableKeyIndex(index + 1)
+    if (keyState.currentKeyIndex === -1) {
         console.error('[API Keys] Todas las API keys han fallado.')
     } else {
         console.warn(
             `[API Keys] Clave #${index + 1} marcada como fallida. ` +
-            `Usando clave #${currentKeyIndex + 1} en adelante.`
+            `Usando clave #${keyState.currentKeyIndex + 1} en adelante.`
         )
     }
 }
@@ -310,7 +318,7 @@ async function callLLMStreaming(
     })
 
     // Intentar con cada clave disponible en orden, sin retroceder
-    let keyIndex = getNextAvailableKeyIndex(currentKeyIndex)
+    let keyIndex = getNextAvailableKeyIndex(keyState.currentKeyIndex)
 
     while (keyIndex !== -1) {
         const apiKey = API_KEYS[keyIndex]
@@ -332,7 +340,7 @@ async function callLLMStreaming(
 
         if (llmRes.ok) {
             // ✅ Clave funcionó — actualizar el índice global si avanzó
-            if (keyIndex > currentKeyIndex) currentKeyIndex = keyIndex
+            if (keyIndex > keyState.currentKeyIndex) keyState.currentKeyIndex = keyIndex
             return buildStreamingResponse(llmRes)
         }
 
