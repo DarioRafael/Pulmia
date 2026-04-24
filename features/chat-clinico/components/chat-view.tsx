@@ -5,12 +5,16 @@
 // ChatBubble expandido. Contiene todo el flujo: historial, input, streaming.
 // Ahora incluye selector de contexto (paciente + estudio) para dar info
 // detallada basada en datos reales.
+//
+// NUEVO: genera reporte PDF/Word desde el botón de la barra o cuando el
+// usuario escribe frases como "genera un reporte", "generar informe", etc.
 
 import { useState, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { ListaMensajes } from './lista-mensajes'
 import { BarraInput } from './barra-input'
 import { SelectorContexto } from './selector-contexto'
+import { ReportModal } from './report-modal'          // ← nuevo
 import { useChat } from '../hooks/use-chat'
 import { streamChat } from '../api'
 import { usePacientes } from '@/features/pacientes'
@@ -18,6 +22,26 @@ import { useEstudios } from '@/features/estudios'
 import { useInformeActivo } from '@/features/analisis/informe-activo-context'
 import type { BloqueContenido, MensajeHistorial, Mensaje } from '../tipos'
 import type { Estudio, Paciente } from '@/lib/tipos'
+
+// ── Frases que disparan la generación de reporte ─────────────────────────────
+const REPORT_TRIGGERS = [
+    /gen[ae]r[ae]?\s+(un\s+)?reporte/i,
+    /gen[ae]r[ae]?\s+(un\s+)?informe/i,
+    /crea\s+(un\s+)?reporte/i,
+    /crea\s+(un\s+)?informe/i,
+    /exporta?\s+(el\s+)?reporte/i,
+    /exporta?\s+(el\s+)?informe/i,
+    /descarga\s+(el\s+)?reporte/i,
+    /quiero\s+(un\s+)?reporte/i,
+    /dame\s+(un\s+)?reporte/i,
+    /dame\s+(un\s+)?informe/i,
+]
+
+function isReportRequest(text: string): boolean {
+    return REPORT_TRIGGERS.some(r => r.test(text))
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 interface ChatViewProps {
     readonly compacto?: boolean
@@ -83,6 +107,8 @@ function buildContextBlock(
     return partes.join('\n')
 }
 
+// ── Componente principal ─────────────────────────────────────────────────────
+
 export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
     const {
         messages, isTyping, status,
@@ -101,10 +127,12 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
     const [estudioIdManual, setEstudioIdManual] = useState<string | null>(null)
     const estudioId = estudioIdManual ?? estudioIdInicial ?? idDeUrl ?? null
 
+    // ── Estado del modal de reporte ──────────────────────────────────────────
+    const [reportModalOpen, setReportModalOpen] = useState(false)
+
     const pacienteActual = pacientes.find(p => p.id === pacienteId)
     const estudioActual = estudios.find(e => e.id === estudioId)
 
-    // Prioridad: estudio guardado seleccionado > informe de sesión activa > null
     const informeParaChat = estudioActual?.informe ?? informeActivo ?? null
 
     const estudiosDelPaciente = useMemo(
@@ -112,8 +140,22 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
         [pacienteId, estudios],
     )
 
+    // ── Abrir modal de reporte ───────────────────────────────────────────────
+    const handleGenerateReport = useCallback(() => {
+        setReportModalOpen(true)
+    }, [])
+
+    // ── Envío de mensajes ────────────────────────────────────────────────────
     const handleSend = useCallback((text: string, imageB64?: string, imageMime?: string) => {
         if (!text.trim() && !imageB64) return
+
+        // Detectar intent de reporte en el mensaje
+        if (isReportRequest(text)) {
+            addMessage('user', text, undefined)
+            addMessage('ai', '📄 Abriendo el generador de reporte...', undefined)
+            setReportModalOpen(true)
+            return
+        }
 
         addMessage('user', text, imageB64 ? `data:${imageMime};base64,${imageB64}` : undefined)
         showTyping()
@@ -203,7 +245,23 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
             )}
 
             <ListaMensajes mensajes={messages} isTyping={isTyping} />
-            <BarraInput onSend={handleSend} disabled={isTyping} />
+
+            <BarraInput
+                onSend={handleSend}
+                onGenerateReport={handleGenerateReport}   // ← nuevo
+                disabled={isTyping}
+            />
+
+            {/* Modal de selección y descarga de reporte */}
+            {reportModalOpen && (
+                <ReportModal
+                    paciente={pacienteActual}
+                    estudio={estudioActual}
+                    informe={informeParaChat}
+                    messages={messages}
+                    onClose={() => setReportModalOpen(false)}
+                />
+            )}
         </div>
     )
 }

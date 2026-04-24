@@ -530,3 +530,82 @@ export async function POST(req: NextRequest) {
         ? handleVisionMessage(imageBlock)
         : handleTextMessage(messages, informe ?? null)
 }
+// ── Llamada no-streaming (para narrativa de reportes) ─────────────────────────
+
+/**
+ * Igual que callLLMStreaming pero devuelve el texto completo de una vez.
+ * Usa el mismo pool de API keys con fallback automático.
+ */
+async function callLLMOnce(
+    systemPrompt: string,
+    userText: string,
+): Promise<string | null> {
+    if (!AI_URL || !AI_MODEL || API_KEYS.length === 0) return null
+
+    const requestBody = JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts: [{ text: userText }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
+    })
+
+    let keyIndex = getNextAvailableKeyIndex(keyState.currentKeyIndex)
+
+    while (keyIndex !== -1) {
+        const apiKey = API_KEYS[keyIndex]
+        let res: Response
+        try {
+            res = await fetch(
+                `${AI_URL}/${AI_MODEL}:generateContent?key=${apiKey}`,
+                { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: requestBody },
+            )
+        } catch {
+            return null // error de red, no marcamos la clave
+        }
+
+        if (res.ok) {
+            if (keyIndex > keyState.currentKeyIndex) keyState.currentKeyIndex = keyIndex
+            const data = await res.json()
+            // Gemini puede devolver el texto dividido en múltiples parts — concatenar todo
+            const parts: unknown[] = data?.candidates?.[0]?.content?.parts ?? []
+            const text = parts
+                .map((p: unknown) => (p as { text?: string }).text ?? '')
+                .join('')
+                .trim()
+            return text || null
+        }
+
+        const errorBody = await res.text()
+        if (isKeyExhaustedError(res.status, errorBody)) {
+            markKeyAsFailed(keyIndex)
+            keyIndex = getNextAvailableKeyIndex(keyIndex + 1)
+            continue
+        }
+        return null
+    }
+    return null
+}
+
+// ── Handler narrativa (PUT /api/chat) ─────────────────────────────────────────
+//
+// Body esperado: { prompt: string }
+// Respuesta:     { narrative: string | null }
+//
+// El cliente (ReportModal) construye el prompt con los datos del informe y lo
+// envía aquí. Las API keys viven solo en el servidor — nunca se exponen al
+// navegador.
+
+export async function PUT(req: NextRequest) {
+    let body: { prompt?: string }
+    try { body = await req.json() } catch { return new Response('Body inválido', { status: 400 }) }
+
+    if (!body.prompt?.trim()) {
+        return Response.json({ narrative: null }, { status: 400 })
+    }
+
+    const NARRATIVE_SYSTEM = `Eres un asistente médico especializado en radiología. \
+Genera interpretaciones clínicas profesionales en español para reportes médicos formales. \
+Responde ÚNICAMENTE con el contenido solicitado, sin encabezados Markdown, asteriscos ni comentarios previos.`
+
+    const narrative = await callLLMOnce(NARRATIVE_SYSTEM, body.prompt)
+    return Response.json({ narrative })
+}

@@ -1,31 +1,32 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap');
 
 :root {
-  /* ── Fondos — gris oscuro neutro, sin tinte azul ── */
-  --bg-0: #0c0c0d;
-  --bg-1: #111113;
-  --bg-2: #18181b;
-  --bg-3: #202024;
-  --bg-glass: rgba(17, 17, 19, 0.88);
+  /* ── Fondos — gris oscuro neutro ── */
+  --bg-0: #111111;
+  --bg-1: #0e0e0e;
+  --bg-2: #161616;
+  --bg-3: #1c1c1c;
+  --bg-glass: rgba(14, 14, 14, 0.88);
 
   /* ── Bordes neutros ── */
-  --border: #27272a;
-  --border-h: #3f3f46;
-  /* Borde de selección/foco: único uso del azul en modo oscuro */
-  --border-focus: rgba(59, 130, 246, 0.55);
-  --border-sel: #3b82f6;
+  --border: #1f1f1f;
+  --border-h: #2a2a2a;
+  /* Borde de selección/foco: teal */
+  --border-focus: rgba(20, 184, 166, 0.45);
+  --border-sel: #14b8a6;
 
-  /* ── Acento — azul solo para estados activos y selección ── */
-  --accent: #3b82f6;
-  --accent-h: #60a5fa;
-  --accent-d: #2563eb;
-  --accent-glow: rgba(59, 130, 246, 0.12);
+  /* ── Acento — teal suave ── */
+  --accent: #14b8a6;
+  --accent-h: #2dd4bf;
+  --accent-d: #0f9285;
+  --accent-glow: rgba(20, 184, 166, 0.07);
 
-  /* ── Texto — blanco puro y grises neutros ── */
-  --t0: #f4f4f5;
-  --t1: #a1a1aa;
-  --t2: #71717a;
-  --t3: #3f3f46;
+  /* ── Texto — blancos y grises neutros ── */
+  --t0: #e8e8e8;
+  --t1: #aaaaaa;
+  --t2: #555555;
+  --t3: #333333;
 
   /* ── Estados clínicos ── */
   --ok: #2eb87a;
@@ -36,9 +37,9 @@
   --err-bg: rgba(216, 64, 64, 0.1);
 
   /* ── Tipografía ── */
-  --sans: 'DM Sans', 'Inter', system-ui, sans-serif;
-  --mono: 'IBM Plex Mono', 'JetBrains Mono', monospace;
-  --display: 'DM Sans', system-ui, sans-serif;
+  --sans: 'Geist', system-ui, sans-serif;
+  --mono: 'Geist Mono', monospace;
+  --display: 'Geist', system-ui, sans-serif;
 
   /* ── Radios ── */
   --r3: 3px;
@@ -55,26 +56,26 @@
   /* ── Sombras — neutras, sin color ── */
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4);
   --shadow-md: 0 4px 16px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.4);
-  --shadow-accent: 0 0 0 3px rgba(59, 130, 246, 0.18);
+  --shadow-accent: 0 0 0 3px rgba(20, 184, 166, 0.15);
 }
 
 [data-theme='light'] {
-  --bg-0: #eef1f8;
-  --bg-1: #f5f7fc;
+  --bg-0: #f2f2f2;
+  --bg-1: #f8f8f8;
   --bg-2: #ffffff;
   --bg-3: #ffffff;
   --bg-glass: rgba(255, 255, 255, 0.9);
-  --border: #d4d9ec;
-  --border-h: #b8c0d8;
-  --border-focus: rgba(37, 99, 200, 0.4);
-  --t0: #0f1628;
-  --t1: #4a5575;
-  --t2: #9099b5;
-  --t3: #d0d5e8;
-  --accent: #1a50b8;
-  --accent-h: #2b6be0;
-  --accent-d: #0e3a8c;
-  --accent-glow: rgba(26, 80, 184, 0.1);
+  --border: #e0e0e0;
+  --border-h: #cccccc;
+  --border-focus: rgba(15, 146, 133, 0.4);
+  --t0: #111111;
+  --t1: #444444;
+  --t2: #888888;
+  --t3: #cccccc;
+  --accent: #0f9285;
+  --accent-h: #14b8a6;
+  --accent-d: #0b766b;
+  --accent-glow: rgba(15, 146, 133, 0.08);
   --ok: #1a9e60;
   --warn: #b87010;
   --err: #b02828;
@@ -197,7 +198,7 @@ mark {
 
 /* ── Search match outline ───────────────────────────────────────────── */
 .bubble.search-match {
-  outline: 1px solid rgba(59, 130, 246, 0.35);
+  outline: 1px solid rgba(20, 184, 166, 0.3);
   outline-offset: 3px;
   border-radius: var(--r8);
 }
@@ -238,7 +239,7 @@ mark {
 
 /* ── Animaciones ────────────────────────────────────────────────────── */
 
-/* Entrada de mensajes — FALTABA en el CSS original */
+/* Entrada de mensajes */
 @keyframes msg-in {
   from {
     opacity: 0;

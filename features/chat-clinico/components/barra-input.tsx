@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 
 interface BarraInputProps {
     readonly onSend: (text: string, imageB64?: string, imageMime?: string) => void
+    readonly onGenerateReport?: () => void   // ← nuevo
     readonly disabled?: boolean
 }
 
@@ -14,17 +15,15 @@ interface PendingImage {
     dataUrl: string
 }
 
-export function BarraInput({ onSend, disabled }: BarraInputProps) {
+export function BarraInput({ onSend, onGenerateReport, disabled }: BarraInputProps) {
     const [text, setText] = useState('')
     const [pendingImg, setPendingImg] = useState<PendingImage | null>(null)
-    const [micActive, setMicActive] = useState(false)
     const [focused, setFocused] = useState(false)
     const [isDragging, setIsDragging] = useState(false)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const fileRef = useRef<HTMLInputElement>(null)
     const dragCounterRef = useRef(0)
 
-    // Declarada antes de los useEffect para que el de drag/drop pueda referenciarla.
     function readImageFile(file: File) {
         const reader = new FileReader()
         reader.onload = ev => {
@@ -183,7 +182,10 @@ export function BarraInput({ onSend, disabled }: BarraInputProps) {
                     transition: 'border-color var(--ts), box-shadow var(--ts)',
                     boxShadow: focused ? '0 0 0 3px var(--accent-glow)' : 'none',
                 }}>
-                    <MicBtn active={micActive} onClick={() => setMicActive(v => !v)} />
+
+                    {/* ── Botón Generar Reporte (reemplaza al micrófono) ── */}
+                    <ReportBtn onClick={onGenerateReport} disabled={disabled} />
+
                     <div style={{ width: 1, height: 16, background: 'var(--border)', alignSelf: 'center', flexShrink: 0 }} />
 
                     <textarea
@@ -253,6 +255,55 @@ export function BarraInput({ onSend, disabled }: BarraInputProps) {
     )
 }
 
+// ── Botón de reporte con tooltip ────────────────────────────────────────────
+function ReportBtn({ onClick, disabled }: { onClick?: () => void; disabled?: boolean }) {
+    const [hovered, setHovered] = useState(false)
+    return (
+        <div style={{ position: 'relative', width: 34, height: 34, flexShrink: 0 }}>
+            <button
+                onClick={() => !disabled && onClick?.()}
+                title="Generar reporte"
+                onMouseEnter={() => setHovered(true)}
+                onMouseLeave={() => setHovered(false)}
+                style={{
+                    width: 34, height: 34, borderRadius: '50%',
+                    background: hovered && !disabled ? 'var(--accent-glow)' : 'transparent',
+                    border: 'none',
+                    color: hovered && !disabled ? 'var(--accent)' : 'var(--t2)',
+                    cursor: disabled ? 'default' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all var(--ta)', alignSelf: 'flex-end',
+                    opacity: disabled ? 0.4 : 1,
+                }}
+            >
+                {/* Ícono: documento con líneas */}
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M8.5 1H3C2.45 1 2 1.45 2 2V12C2 12.55 2.45 13 3 13H11C11.55 13 12 12.55 12 12V4.5L8.5 1Z"
+                          stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M8.5 1V4.5H12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                    <line x1="4.5" y1="7"  x2="9.5" y2="7"  stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                    <line x1="4.5" y1="9"  x2="9.5" y2="9"  stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                    <line x1="4.5" y1="11" x2="7.5" y2="11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+            </button>
+            {hovered && !disabled && (
+                <div style={{
+                    position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: 'var(--bg-3)', border: '1px solid var(--border-h)',
+                    borderRadius: 6, padding: '4px 8px', whiteSpace: 'nowrap',
+                    fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--t1)',
+                    letterSpacing: '0.04em', pointerEvents: 'none',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    zIndex: 20,
+                }}>
+                    Generar reporte
+                </div>
+            )}
+        </div>
+    )
+}
+
 function IconBtn({ title, onClick, children }: {
     title: string; onClick: () => void; children: React.ReactNode
 }) {
@@ -265,27 +316,5 @@ function IconBtn({ title, onClick, children }: {
         }}>
             {children}
         </button>
-    )
-}
-
-function MicBtn({ active, onClick }: { active: boolean; onClick: () => void }) {
-    return (
-        <div style={{ position: 'relative', width: 34, height: 34, flexShrink: 0 }}>
-            {active && (
-                <div style={{
-                    position: 'absolute', inset: -3, borderRadius: '50%',
-                    border: '1.5px solid var(--accent)',
-                    animation: 'mic-pulse 1.3s ease-out infinite',
-                    pointerEvents: 'none', opacity: 0.5,
-                }} />
-            )}
-            <IconBtn title="Micrófono" onClick={onClick}>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <rect x="4.5" y="1" width="5" height="7.5" rx="2.5" stroke="currentColor" strokeWidth="1.4" />
-                    <path d="M2 7A5 5 0 0 0 12 7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                    <line x1="7" y1="12" x2="7" y2="13.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                </svg>
-            </IconBtn>
-        </div>
     )
 }

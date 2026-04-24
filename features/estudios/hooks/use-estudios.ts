@@ -1,7 +1,7 @@
 'use client'
 
 // Store de estudios en localStorage.
-// En fases futuras (Supabase) este hook se reescribe para llamar a la API,
+// En fases futuras (Supabase) este hooks se reescribe para llamar a la API,
 // pero la interfaz de retorno queda igual — los componentes no necesitan cambiar.
 
 import { useState, useEffect, useCallback } from 'react'
@@ -30,6 +30,7 @@ export function useEstudios() {
 
     // Carga inicial desde localStorage.
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setEstudios(leerEstudios())
     }, [])
 
