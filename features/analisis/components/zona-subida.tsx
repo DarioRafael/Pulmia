@@ -46,7 +46,6 @@ export function ZonaSubida({ onArchivo, disabled }: ZonaSubidaProps) {
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileRef.current?.click() }}
             style={{
                 width: '100%',
-                maxWidth: 520,
                 margin: '0 auto',
                 padding: 48,
                 border: `2px dashed ${isDragging ? 'var(--accent)' : 'var(--border-h)'}`,
