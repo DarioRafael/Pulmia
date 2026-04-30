@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import type React from 'react'
 import { usePlan } from '@/components/plan'
 import { PlanBadge } from './plan-badge'
 
@@ -101,7 +102,6 @@ export function SidebarApp({ collapsed, onToggle }: SidebarAppProps) {
                 marginBottom: 28,
                 gap: 10,
             }}>
-                {/* Botón toggle — ocupa el lugar del ícono de pulmón */}
                 <button
                     onClick={onToggle}
                     title={collapsed ? 'Expandir' : 'Colapsar'}
@@ -136,11 +136,10 @@ export function SidebarApp({ collapsed, onToggle }: SidebarAppProps) {
                     </svg>
                 </button>
 
-                {/* Texto del logo — desaparece al colapsar */}
                 {!collapsed && (
                     <div>
                         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--t0)', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
-                            SistemaCaPu
+                            Pulmia
                         </div>
                         <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--t2)', letterSpacing: '0.04em', marginTop: 2 }}>
                             Carcinoma Pulmonar
@@ -149,7 +148,6 @@ export function SidebarApp({ collapsed, onToggle }: SidebarAppProps) {
                 )}
             </div>
 
-            {/* Label sección */}
             {!collapsed && (
                 <div style={{
                     fontFamily: 'var(--mono)',
@@ -164,7 +162,6 @@ export function SidebarApp({ collapsed, onToggle }: SidebarAppProps) {
                 </div>
             )}
 
-            {/* Nav items */}
             <div style={{
                 display: 'flex',
                 flexDirection: 'column',

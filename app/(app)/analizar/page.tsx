@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import type React from 'react'
 import { HeaderApp } from '@/components/layout/header-app'
 import { ZonaSubida, InformeResultado, useAnalisis } from '@/features/analisis'
 import { useInformeActivo } from '@/features/analisis/informe-activo-context'
@@ -11,32 +12,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import type { Paciente } from '@/lib/tipos'
 
-// ── Mini componente: fondo decorativo de radiografías ─────────────────
-function RadioFondo() {
-    return (
-        <div style={{
-            position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0,
-        }}>
-            {/* Patrón grid tenue */}
-            <div style={{
-                position: 'absolute', inset: 0,
-                backgroundImage: `
-                    linear-gradient(var(--border) 1px, transparent 1px),
-                    linear-gradient(90deg, var(--border) 1px, transparent 1px)
-                `,
-                backgroundSize: '48px 48px',
-                opacity: 0.25,
-            }} />
-            {/* Glow central */}
-            <div style={{
-                position: 'absolute',
-                top: '30%', left: '50%', transform: 'translate(-50%, -50%)',
-                width: 600, height: 600,
-                background: 'radial-gradient(circle, rgba(20,184,166,0.04) 0%, transparent 70%)',
-            }} />
-        </div>
-    )
-}
+
 
 // ── Mini componente: stat badge ───────────────────────────────────────
 function StatBadge({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
@@ -47,8 +23,8 @@ function StatBadge({ icon, label, value }: { icon: React.ReactNode; label: strin
             background: 'var(--bg-2)', border: '1px solid var(--border)',
         }}>
             <span style={{ color: 'var(--accent)', opacity: 0.8 }}>{icon}</span>
-            <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--t2)', letterSpacing: '0.04em' }}>{label}</span>
-            <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--t0)', fontWeight: 500 }}>{value}</span>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--t2)' }}>{label}</span>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--t0)', fontWeight: 600 }}>{value}</span>
         </div>
     )
 }
@@ -66,11 +42,11 @@ function PasoFlujo({ num, texto, activo }: { num: number; texto: string; activo:
                 background: activo ? 'var(--accent)' : 'var(--bg-3)',
                 border: `1px solid ${activo ? 'var(--accent)' : 'var(--border)'}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 10, fontFamily: 'var(--mono)', fontWeight: 600,
+                fontSize: 11, fontFamily: 'var(--mono)', fontWeight: 600,
                 color: activo ? '#fff' : 'var(--t2)',
                 flexShrink: 0,
             }}>{num}</div>
-            <span style={{ fontSize: 12, color: activo ? 'var(--t0)' : 'var(--t2)' }}>{texto}</span>
+            <span style={{ fontSize: 14, color: activo ? 'var(--t0)' : 'var(--t2)' }}>{texto}</span>
         </div>
     )
 }
@@ -85,14 +61,14 @@ function MetaChip({ label, value, icon }: { label: string; value: string; icon?:
             flex: 1, minWidth: 0,
         }}>
             <div style={{
-                fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--t2)',
-                textTransform: 'uppercase', letterSpacing: '0.06em',
+                fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--t2)',
+                textTransform: 'uppercase', letterSpacing: '0.04em',
                 display: 'flex', alignItems: 'center', gap: 4,
             }}>
                 {icon}{label}
             </div>
             <div style={{
-                fontSize: 12, color: 'var(--t0)', fontWeight: 500,
+                fontSize: 14, color: 'var(--t0)', fontWeight: 600,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>{value}</div>
         </div>
@@ -111,7 +87,7 @@ function PanelMetaYModelo({
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             {/* Metadatos de la imagen */}
             <div style={{ padding: '16px', borderRadius: 12, background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
-                <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--t2)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 12 }}>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--t2)', letterSpacing: '0.06em', textTransform: 'uppercase' as const, marginBottom: 12 }}>
                     Detalles de la imagen
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
@@ -127,11 +103,11 @@ function PanelMetaYModelo({
             </div>
             {/* El modelo detecta */}
             <div style={{ padding: '16px', borderRadius: 12, background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
-                <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--t2)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 12 }}>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--t2)', letterSpacing: '0.06em', textTransform: 'uppercase' as const, marginBottom: 12 }}>
                     {enProceso ? 'Procesando' : 'El modelo detecta'}
                 </div>
                 {['Carcinoma (prob. estimada)', 'Atelectasia y fibrosis', 'Efusión y hernia', 'Zonas de atención (Grad-CAM)', '14+ condiciones torácicas'].map((item) => (
-                    <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--t1)' }}>
+                    <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13, color: 'var(--t1)' }}>
                         <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
                         {item}
                     </div>
@@ -221,7 +197,6 @@ export default function AnalizarPage() {
 
     return (
         <>
-            <RadioFondo />
             <HeaderApp
                 titulo="Analizar radiografía"
                 subtitulo={
@@ -246,19 +221,19 @@ export default function AnalizarPage() {
                         {/* Cabecera descriptiva */}
                         <div style={{ textAlign: 'center', paddingBottom: 4 }}>
                             <div style={{
-                                fontFamily: 'var(--mono)', fontSize: 9,
-                                color: 'var(--accent)', letterSpacing: '0.12em',
+                                fontFamily: 'var(--mono)', fontSize: 11,
+                                color: 'var(--accent)', letterSpacing: '0.1em',
                                 textTransform: 'uppercase', marginBottom: 8,
                             }}>
                                 Módulo de análisis
                             </div>
                             <h2 style={{
-                                fontSize: 20, fontWeight: 600, color: 'var(--t0)',
-                                letterSpacing: '-0.03em', marginBottom: 6,
+                                fontSize: 26, fontWeight: 700, color: 'var(--t0)',
+                                letterSpacing: '-0.02em', marginBottom: 8,
                             }}>
                                 Radiografía de tórax con IA
                             </h2>
-                            <p style={{ fontSize: 12.5, color: 'var(--t1)', lineHeight: 1.7, maxWidth: 400, margin: '0 auto' }}>
+                            <p style={{ fontSize: 14, color: 'var(--t1)', lineHeight: 1.7, maxWidth: 420, margin: '0 auto' }}>
                                 Sube una imagen y el modelo detectará patrones relevantes en segundos.
                             </p>
                         </div>
@@ -279,8 +254,8 @@ export default function AnalizarPage() {
                                 display: 'flex', flexDirection: 'column', gap: 12,
                             }}>
                                 <div style={{
-                                    fontFamily: 'var(--mono)', fontSize: 9,
-                                    color: 'var(--t2)', letterSpacing: '0.08em',
+                                    fontFamily: 'var(--mono)', fontSize: 11,
+                                    color: 'var(--t2)', letterSpacing: '0.06em',
                                     textTransform: 'uppercase', marginBottom: 4,
                                 }}>
                                     Cómo funciona
@@ -299,8 +274,8 @@ export default function AnalizarPage() {
                                 display: 'flex', flexDirection: 'column', gap: 10,
                             }}>
                                 <div style={{
-                                    fontFamily: 'var(--mono)', fontSize: 9,
-                                    color: 'var(--t2)', letterSpacing: '0.08em',
+                                    fontFamily: 'var(--mono)', fontSize: 11,
+                                    color: 'var(--t2)', letterSpacing: '0.06em',
                                     textTransform: 'uppercase', marginBottom: 4,
                                 }}>
                                     Uso del plan
@@ -325,7 +300,7 @@ export default function AnalizarPage() {
                                         </div>
                                     </>
                                 ) : (
-                                    <div style={{ fontSize: 12, color: 'var(--t1)' }}>Plan sin límite de estudios</div>
+                                    <div style={{ fontSize: 14, color: 'var(--t1)' }}>Plan sin límite de estudios</div>
                                 )}
                                 <StatBadge
                                     icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5"/><path d="M8 5v3l2 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>}
@@ -368,7 +343,7 @@ export default function AnalizarPage() {
                         {/* Columna izquierda: imagen */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                             <div style={{
-                                fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--t2)',
+                                fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--t2)',
                                 letterSpacing: '0.06em', textTransform: 'uppercase',
                             }}>
                                 Previsualización
@@ -482,7 +457,7 @@ export default function AnalizarPage() {
                         {/* Columna izquierda: imagen con overlay de análisis */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                             <div style={{
-                                fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--t2)',
+                                fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--t2)',
                                 letterSpacing: '0.06em', textTransform: 'uppercase',
                             }}>
                                 Previsualización
@@ -521,7 +496,7 @@ export default function AnalizarPage() {
                                         borderTopColor: 'var(--accent)',
                                         animation: 'spin 0.8s linear infinite',
                                     }} />
-                                    <div style={{ fontSize: 14, color: '#fff', fontWeight: 500 }}>
+                                    <div style={{ fontSize: 15, color: '#fff', fontWeight: 500 }}>
                                         {estado.paso === 'subiendo' ? 'Subiendo imagen...' : 'Analizando con el modelo...'}
                                     </div>
                                     <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
@@ -618,7 +593,7 @@ export default function AnalizarPage() {
                             background: 'var(--bg-2)', border: '1px solid var(--border)',
                         }}>
                             <div style={{
-                                fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--t2)',
+                                fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--t2)',
                                 letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 16,
                             }}>
                                 Guardar estudio

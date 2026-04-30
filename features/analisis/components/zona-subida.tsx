@@ -86,22 +86,22 @@ export function ZonaSubida({ onArchivo, disabled }: ZonaSubidaProps) {
             </div>
 
             <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--t0)', marginBottom: 6 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--t0)', marginBottom: 6 }}>
                     Subir radiografía
                 </div>
-                <div style={{ fontSize: 13, color: 'var(--t1)', lineHeight: 1.6 }}>
+                <div style={{ fontSize: 14, color: 'var(--t1)', lineHeight: 1.7 }}>
                     Arrastra una imagen aquí o haz click para seleccionar.
                     <br />
-                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--t2)' }}>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--t2)' }}>
                         PNG, JPG, DICOM (próximamente)
                     </span>
                 </div>
             </div>
 
             <div style={{
-                padding: '8px 20px', borderRadius: 10,
+                padding: '10px 24px', borderRadius: 10,
                 background: 'var(--accent)', color: '#fff',
-                fontSize: 13, fontWeight: 500,
+                fontSize: 14, fontWeight: 600,
                 boxShadow: 'var(--shadow-accent)',
             }}>
                 Seleccionar archivo
