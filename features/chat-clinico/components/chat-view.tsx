@@ -8,13 +8,17 @@
 //
 // NUEVO: genera reporte PDF/Word desde el botón de la barra o cuando el
 // usuario escribe frases como "genera un reporte", "generar informe", etc.
+//
+// NUEVO: el médico puede adjuntar documentos PDF o Word (.docx) con datos
+// clínicos del paciente. El texto extraído se inyecta como contexto adicional
+// en el sistema, enriqueciendo las respuestas y los reportes generados.
 
 import { useState, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { ListaMensajes } from './lista-mensajes'
 import { BarraInput } from './barra-input'
 import { SelectorContexto } from './selector-contexto'
-import { ReportModal } from './report-modal'          // ← nuevo
+import { ReportModal } from './report-modal'
 import { useChat } from '../hooks/use-chat'
 import { streamChat } from '../api'
 import { usePacientes } from '@/features/pacientes'
@@ -39,6 +43,58 @@ const REPORT_TRIGGERS = [
 
 function isReportRequest(text: string): boolean {
     return REPORT_TRIGGERS.some(r => r.test(text))
+}
+
+// ── Extracción de texto de documentos adjuntos ───────────────────────────────
+
+/**
+ * Extrae texto plano de un archivo PDF usando pdf.js (dinámico).
+ * Devuelve el texto concatenado de todas las páginas.
+ */
+async function extractTextFromPDF(file: File): Promise<string> {
+    const arrayBuffer = await file.arrayBuffer()
+    // Importación dinámica para no penalizar el bundle inicial
+    const pdfjsLib = await import('pdfjs-dist')
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    const pages: string[] = []
+    for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i)
+        const content = await page.getTextContent()
+        const pageText = (content.items as unknown as { str?: string }[])
+            .map(item => item.str ?? '')
+            .join(' ')
+        pages.push(pageText)
+    }
+    return pages.join('\n\n').trim()
+}
+
+/**
+ * Extrae texto plano de un archivo Word (.docx) usando mammoth.js (dinámico).
+ */
+async function extractTextFromDOCX(file: File): Promise<string> {
+    const arrayBuffer = await file.arrayBuffer()
+    const mammoth = await import('mammoth')
+    const result = await mammoth.extractRawText({ arrayBuffer })
+    return result.value.trim()
+}
+
+/**
+ * Detecta el tipo de documento por extensión/mime y extrae su texto.
+ * Devuelve null si el formato no es soportado.
+ */
+async function extractDocumentText(file: File): Promise<string | null> {
+    const name = file.name.toLowerCase()
+    if (name.endsWith('.pdf') || file.type === 'application/pdf') {
+        return extractTextFromPDF(file)
+    }
+    if (
+        name.endsWith('.docx') ||
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ) {
+        return extractTextFromDOCX(file)
+    }
+    return null
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -66,6 +122,7 @@ function buildContextBlock(
     paciente: Paciente | undefined,
     estudio: Estudio | undefined,
     estudiosDelPaciente: readonly Estudio[],
+    documentoClinico: string | null,
 ): string {
     const partes: string[] = []
 
@@ -104,6 +161,19 @@ function buildContextBlock(
         if (estudio.notas) partes.push(`Notas del médico: ${estudio.notas}`)
     }
 
+    // Documento clínico adjunto por el médico (PDF o Word)
+    if (documentoClinico) {
+        partes.push('\n[DOCUMENTO CLÍNICO ADJUNTO POR EL MÉDICO]')
+        partes.push('El siguiente texto fue extraído de un documento proporcionado por el médico. Úsalo como contexto adicional del paciente para enriquecer tu interpretación y el reporte:')
+        partes.push('---')
+        // Limitar a 6000 caracteres para no saturar el contexto del LLM
+        const extracto = documentoClinico.length > 6000
+            ? documentoClinico.slice(0, 6000) + '\n[... documento truncado por longitud ...]'
+            : documentoClinico
+        partes.push(extracto)
+        partes.push('---')
+    }
+
     return partes.join('\n')
 }
 
@@ -127,6 +197,13 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
     const [estudioIdManual, setEstudioIdManual] = useState<string | null>(null)
     const estudioId = estudioIdManual ?? estudioIdInicial ?? idDeUrl ?? null
 
+    // ── Documento clínico adjunto (PDF o Word) ───────────────────────────────
+    // Guardamos el texto extraído del documento más reciente que haya adjuntado
+    // el médico. Se acumula en el contexto de todas las llamadas al LLM mientras
+    // dure la sesión (o hasta que se adjunte uno nuevo).
+    const [documentoClinico, setDocumentoClinico] = useState<string | null>(null)
+    const [nombreDocumento, setNombreDocumento] = useState<string | null>(null)
+
     // ── Estado del modal de reporte ──────────────────────────────────────────
     const [reportModalOpen, setReportModalOpen] = useState(false)
 
@@ -144,6 +221,32 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
     const handleGenerateReport = useCallback(() => {
         setReportModalOpen(true)
     }, [])
+
+    // ── Manejo de documentos adjuntos (PDF / Word) ───────────────────────────
+    const handleDocumentAttach = useCallback(async (file: File) => {
+        addMessage('user', `📎 Documento adjuntado: ${file.name}`, undefined)
+        showTyping()
+        try {
+            const text = await extractDocumentText(file)
+            if (!text || text.length < 10) {
+                hideTyping()
+                addMessage('ai', '⚠️ No pude extraer texto del documento. Asegúrate de que sea un PDF con texto seleccionable o un archivo Word (.docx).', undefined)
+                return
+            }
+            setDocumentoClinico(text)
+            setNombreDocumento(file.name)
+            hideTyping()
+            addMessage(
+                'ai',
+                `✅ **Documento clínico cargado:** \`${file.name}\`\n\nHe leído el contenido y lo usaré como contexto adicional del paciente en mis respuestas y en el reporte. ¿Tienes alguna pregunta sobre los hallazgos o deseas generar el reporte con esta información integrada?`,
+                undefined,
+            )
+        } catch (err) {
+            hideTyping()
+            console.error('[ChatView] Error al leer documento:', err)
+            addMessage('ai', '⚠️ Ocurrió un error al leer el documento. Intenta con otro archivo.', undefined)
+        }
+    }, [addMessage, showTyping, hideTyping])
 
     // ── Envío de mensajes ────────────────────────────────────────────────────
     const handleSend = useCallback((text: string, imageB64?: string, imageMime?: string) => {
@@ -170,7 +273,7 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
                 return { role: m.rol === 'ai' ? 'assistant' as const : 'user' as const, content: m.contenido }
             })
 
-        const contextBlock = buildContextBlock(pacienteActual, estudioActual, estudiosDelPaciente)
+        const contextBlock = buildContextBlock(pacienteActual, estudioActual, estudiosDelPaciente, documentoClinico)
         let userMessage = text || '(imagen adjunta)'
         if (contextBlock) {
             userMessage = `${contextBlock}\n\n---\nPregunta del usuario: ${userMessage}`
@@ -190,7 +293,7 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
             onDone: () => { endStream() },
             onError: (err) => { hideTyping(); endStream(); console.error(err) },
         })
-    }, [messages, addMessage, startStream, appendChunk, endStream, attachGradcam, showTyping, hideTyping, pacienteActual, estudioActual, estudiosDelPaciente, informeParaChat])
+    }, [messages, addMessage, startStream, appendChunk, endStream, attachGradcam, showTyping, hideTyping, pacienteActual, estudioActual, estudiosDelPaciente, informeParaChat, documentoClinico])
 
     return (
         <div style={{
@@ -223,6 +326,25 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
                             {status}
                         </div>
                     </div>
+                    {/* Indicador de documento clínico activo */}
+                    {nombreDocumento && (
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: 5,
+                            padding: '3px 8px', borderRadius: 'var(--r6)',
+                            background: 'var(--accent-glow)', border: '1px solid var(--accent)',
+                            fontSize: 9, color: 'var(--accent)', fontFamily: 'var(--mono)',
+                            maxWidth: 160, overflow: 'hidden',
+                        }}>
+                            <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                                <path d="M7 1H3C2.45 1 2 1.45 2 2V10C2 10.55 2.45 11 3 11H9C9.55 11 10 10.55 10 10V4L7 1Z"
+                                      stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M7 1V4H10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {nombreDocumento}
+                            </span>
+                        </div>
+                    )}
                 </header>
             )}
 
@@ -248,7 +370,8 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
 
             <BarraInput
                 onSend={handleSend}
-                onGenerateReport={handleGenerateReport}   // ← nuevo
+                onGenerateReport={handleGenerateReport}
+                onDocumentAttach={handleDocumentAttach}   // ← nuevo
                 disabled={isTyping}
             />
 
@@ -259,6 +382,8 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
                     estudio={estudioActual}
                     informe={informeParaChat}
                     messages={messages}
+                    documentoClinico={documentoClinico}
+                    nombreDocumento={nombreDocumento}
                     onClose={() => setReportModalOpen(false)}
                 />
             )}

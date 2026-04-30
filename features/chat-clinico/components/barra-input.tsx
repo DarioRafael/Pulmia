@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import type React from 'react'
 
 interface BarraInputProps {
     readonly onSend: (text: string, imageB64?: string, imageMime?: string) => void
-    readonly onGenerateReport?: () => void   // ← nuevo
+    readonly onGenerateReport?: () => void
+    readonly onDocumentAttach?: (file: File) => Promise<void>
     readonly disabled?: boolean
 }
 
@@ -15,7 +17,7 @@ interface PendingImage {
     dataUrl: string
 }
 
-export function BarraInput({ onSend, onGenerateReport, disabled }: BarraInputProps) {
+export function BarraInput({ onSend, onGenerateReport, onDocumentAttach, disabled }: BarraInputProps) {
     const [text, setText] = useState('')
     const [pendingImg, setPendingImg] = useState<PendingImage | null>(null)
     const [focused, setFocused] = useState(false)
@@ -86,6 +88,15 @@ export function BarraInput({ onSend, onGenerateReport, disabled }: BarraInputPro
         }
     }
 
+    const docRef = useRef<HTMLInputElement>(null)
+
+    function handleDocChange(e: React.ChangeEvent<HTMLInputElement>) {
+        const f = e.target.files?.[0]
+        if (!f) return
+        void onDocumentAttach?.(f)
+        e.target.value = ''
+    }
+
     function send() {
         const t = text.trim()
         if (!t && !pendingImg) return
@@ -148,6 +159,7 @@ export function BarraInput({ onSend, onGenerateReport, disabled }: BarraInputPro
                         background: 'var(--bg-2)', border: '1px solid var(--border)',
                         borderRadius: 'var(--r8)',
                     }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={pendingImg.dataUrl} alt={pendingImg.name} style={{
                             width: 34, height: 34, objectFit: 'cover',
                             borderRadius: 'var(--r4)', flexShrink: 0, border: '1px solid var(--border-h)',
@@ -221,6 +233,18 @@ export function BarraInput({ onSend, onGenerateReport, disabled }: BarraInputPro
                     <div style={{ width: 1, height: 16, background: 'var(--border)', alignSelf: 'center', flexShrink: 0 }} />
 
                     <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
+                    <input ref={docRef} type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style={{ display: 'none' }} onChange={handleDocChange} />
+                    {onDocumentAttach && (
+                        <IconBtn title="Adjuntar documento clínico (PDF / Word)" onClick={() => docRef.current?.click()}>
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                                <path d="M8 1H3C2.45 1 2 1.45 2 2V12C2 12.55 2.45 13 3 13H11C11.55 13 12 12.55 12 12V5L8 1Z"
+                                      stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M8 1V5H12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                                <line x1="4.5" y1="7.5" x2="9.5" y2="7.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                                <line x1="4.5" y1="9.5" x2="9.5" y2="9.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                            </svg>
+                        </IconBtn>
+                    )}
                     <IconBtn title="Adjuntar imagen" onClick={() => fileRef.current?.click()}>
                         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                             <path d="M12 9V12C12 12.55 11.55 13 11 13H3C2.45 13 2 12.55 2 12V9"

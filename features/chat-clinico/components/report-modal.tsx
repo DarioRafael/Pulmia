@@ -12,6 +12,7 @@
 //
 
 import { useState, useEffect } from 'react'
+import type React from 'react'
 import {
     Document, Packer, Paragraph, TextRun,
     HeadingLevel, AlignmentType, BorderStyle,
@@ -26,6 +27,8 @@ interface ReportModalProps {
     readonly estudio: Estudio | undefined
     readonly informe: Estudio['informe'] | null
     readonly messages: readonly Mensaje[]
+    readonly documentoClinico?: string | null
+    readonly nombreDocumento?: string | null
     readonly onClose: () => void
 }
 
@@ -63,19 +66,25 @@ async function generateGeminiNarrative(
 - Patologías detectadas: ${patologiasStr}
 ${estudio?.notas ? `- Notas del médico: ${estudio.notas}` : ''}
 
-Genera EXACTAMENTE las siguientes secciones, separadas por una línea en blanco. Usa solo texto plano sin Markdown ni asteriscos:
+Genera EXACTAMENTE las siguientes secciones en orden, separadas por una línea en blanco. Usa solo texto plano sin Markdown ni asteriscos. Cada sección debe tener entre 3 y 5 oraciones de profundidad clínica real — no repitas los datos numéricos crudos, interprétalos:
 
 HALLAZGOS RADIOLÓGICOS
-[Describe los hallazgos principales detectados por el modelo en 2-3 oraciones clínicas precisas.]
+[Describe los hallazgos principales con su significado morfológico y distribución anatómica probable. Menciona la coexistencia de condiciones y su posible relación fisiopatológica. Cita grados de certeza del modelo solo cuando aporten contexto clínico.]
 
-INTERPRETACIÓN
-[Interpreta el significado clínico de los resultados en 2-3 oraciones, considerando la probabilidad y severidad.]
+CORRELACIÓN CLÍNICA E INTERPRETACIÓN
+[Interpreta el significado clínico conjunto de los hallazgos. Plantea 2-3 diagnósticos diferenciales ordenados por probabilidad, justificando brevemente cada uno. Comenta si la probabilidad de carcinoma es consistente o discordante con el patrón de hallazgos acompañantes.]
 
-RECOMENDACIONES
-[Proporciona 2-4 recomendaciones clínicas concretas basadas en los hallazgos, numeradas del 1 al 4.]
+NIVEL DE URGENCIA Y JUSTIFICACIÓN
+[Clasifica el caso como Urgente, Prioritario o Rutinario. Justifica la clasificación basándote en la combinación de hallazgos y su impacto potencial en el manejo del paciente.]
+
+PLAN DIAGNÓSTICO RECOMENDADO
+[Enumera 3-5 estudios o acciones clínicas concretas (con modalidad específica: ecocardiograma, TAC de alta resolución, broncoscopía, etc.), en orden de prioridad. Para cada uno, indica qué información aportaría al diagnóstico diferencial.]
+
+CONSIDERACIONES ESPECIALES
+[Una o dos advertencias clínicas relevantes: factores que pueden afectar la interpretación del modelo, comorbilidades que cambiarían el manejo, o aspectos que el especialista debe tener en cuenta antes de tomar decisiones.]
 
 ADVERTENCIA
-[Una oración recordando que este análisis es asistido por IA y debe ser validado por un médico especialista.]`
+[Una oración recordando que este análisis es generado por un modelo de inteligencia artificial y debe ser validado e interpretado por un médico especialista antes de tomar decisiones clínicas.]`
 
     try {
         // Las API keys viven en el servidor (AI_API_KEY_1/2/3 sin prefijo NEXT_PUBLIC).
@@ -106,7 +115,7 @@ function buildReportLines(
     paciente: Paciente | undefined,
     estudio: Estudio | undefined,
     informe: Estudio['informe'] | null,
-    messages: readonly Mensaje[],
+    _messages: readonly Mensaje[],
     geminiNarrative: string | null,
 ): string[] {
     const lines: string[] = []
@@ -148,27 +157,6 @@ function buildReportLines(
         lines.push('')
     }
 
-    const chatLines = messages.filter(m => !m.isStreaming && m.contenido.trim())
-    if (chatLines.length > 0) {
-        lines.push('── HISTORIAL DE CONSULTA ─────────────────────────────')
-        chatLines.forEach(m => {
-            const rol = m.rol === 'user' ? 'Médico' : 'Asistente IA'
-            lines.push(`[${rol}]`)
-            const words = m.contenido.split(' ')
-            let current = ''
-            words.forEach(w => {
-                if ((current + ' ' + w).length > 90) {
-                    lines.push(current.trim())
-                    current = w
-                } else {
-                    current += ' ' + w
-                }
-            })
-            if (current.trim()) lines.push(current.trim())
-            lines.push('')
-        })
-    }
-
     lines.push('─────────────────────────────────────────────────────')
     lines.push('Documento generado automáticamente. No reemplaza el criterio clínico.')
 
@@ -185,13 +173,13 @@ async function buildPDF(
     paciente: Paciente | undefined,
     estudio: Estudio | undefined,
     informe: Estudio['informe'] | null,
-    messages: readonly Mensaje[],
+    _messages: readonly Mensaje[],
     geminiNarrative: string | null,
 ): Promise<{ blob: Blob; filename: string }> {
     const { jsPDF } = await import('jspdf')
     const doc = new jsPDF({ unit: 'mm', format: 'a4' })
 
-    const lines = buildReportLines(paciente, estudio, informe, messages, geminiNarrative)
+    const lines = buildReportLines(paciente, estudio, informe, _messages, geminiNarrative)
 
     const margin = 18
     const pageW = doc.internal.pageSize.getWidth()
@@ -222,7 +210,7 @@ async function buildPDF(
             doc.setFont('helvetica', 'bold')
             doc.setFontSize(9)
             doc.setTextColor(30, 60, 160)
-            doc.text(line.replace(/──\s*/g, '').replace(/\s*──*/g, '').trim(), margin, y)
+            doc.text(line.replace(/──\s*/g, '').replace(/\s*─+/g, '').trim(), margin, y)
             doc.setTextColor(30, 30, 30)
             y += 8
         } else if (line === '') {
@@ -267,7 +255,7 @@ async function buildDOCX(
     paciente: Paciente | undefined,
     estudio: Estudio | undefined,
     informe: Estudio['informe'] | null,
-    messages: readonly Mensaje[],
+    _messages: readonly Mensaje[],
     geminiNarrative: string | null,
 ): Promise<{ blob: Blob; filename: string }> {
     const now = new Date().toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'short' })
@@ -357,27 +345,6 @@ async function buildDOCX(
                 }))
             }
         }
-    }
-
-    const chatMessages = messages.filter(m => !m.isStreaming && m.contenido.trim())
-    if (chatMessages.length > 0) {
-        sectionHeader('Historial de Consulta')
-        chatMessages.forEach(m => {
-            const isAI = m.rol === 'ai'
-            const label = isAI ? 'Asistente IA' : 'Médico'
-            paragraphs.push(new Paragraph({
-                children: [
-                    new TextRun({
-                        text: `[${label}]  `,
-                        bold: true,
-                        color: isAI ? '2B6BE0' : '1E6E1E',
-                        size: 19,
-                    }),
-                    new TextRun({ text: m.contenido, size: 19 }),
-                ],
-                spacing: { after: 120 },
-            }))
-        })
     }
 
     paragraphs.push(new Paragraph({
@@ -502,7 +469,6 @@ export function ReportModal({ paciente, estudio, informe, messages, onClose }: R
     }
 
     const hasContext = !!(paciente || estudio || informe)
-    const chatCount = messages.filter(m => !m.isStreaming && m.contenido.trim()).length
 
     return (
         // Overlay
@@ -578,7 +544,6 @@ export function ReportModal({ paciente, estudio, informe, messages, onClose }: R
                         <IncludeRow icon="🧑‍⚕️" label="Datos del paciente"  active={!!paciente}  value={paciente?.nombre} />
                         <IncludeRow icon="🩻" label="Resultado del estudio" active={!!informe}   value={informe ? `${informe.porcentajeCarcinoma}%` : undefined} />
                         <IncludeRow icon="🤖" label="Interpretación IA"     active={!!geminiNarrative && !geminiLoading} value={geminiLoading ? 'cargando…' : geminiError ? 'no disponible' : undefined} />
-                        <IncludeRow icon="💬" label="Historial de consulta" active={chatCount > 0} value={chatCount > 0 ? `${chatCount} mensajes` : undefined} />
                         {!hasContext && (
                             <p style={{ fontSize: 11, color: 'var(--t2)', margin: '6px 0 0' }}>
                                 Sin contexto seleccionado. El reporte estará vacío.
