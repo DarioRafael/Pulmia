@@ -65,27 +65,30 @@ const keyState = g.__apiKeyState
 /**
  * Devuelve el índice de la próxima clave disponible a partir de `startIndex`.
  * Retorna -1 si todas las claves están agotadas.
+ * Acepta startIndex negativo o fuera de rango — lo normaliza a 0.
  */
 function getNextAvailableKeyIndex(startIndex: number): number {
-    for (let i = startIndex; i < API_KEYS.length; i++) {
+    const from = Math.max(0, startIndex)
+    for (let i = from; i < API_KEYS.length; i++) {
         if (!keyState.failedKeyIndices.has(i)) return i
     }
     return -1
 }
 
 /**
- * Marca una clave como fallida de forma permanente y avanza el índice global.
+ * Marca una clave como fallida de forma permanente.
+ * NO modifica currentKeyIndex — cada llamada a callLLM* calcula el índice
+ * en el momento de la petición para evitar condiciones de carrera.
  */
 function markKeyAsFailed(index: number): void {
     keyState.failedKeyIndices.add(index)
-    // Avanzar currentKeyIndex hasta la próxima clave válida
-    keyState.currentKeyIndex = getNextAvailableKeyIndex(index + 1)
-    if (keyState.currentKeyIndex === -1) {
+    const next = getNextAvailableKeyIndex(index + 1)
+    if (next === -1) {
         console.error('[API Keys] Todas las API keys han fallado.')
     } else {
         console.warn(
             `[API Keys] Clave #${index + 1} marcada como fallida. ` +
-            `Usando clave #${keyState.currentKeyIndex + 1} en adelante.`
+            `Próxima clave disponible: #${next + 1}.`
         )
     }
 }
@@ -334,8 +337,10 @@ async function callLLMStreaming(
         generationConfig: { temperature: 0.3 },
     })
 
-    // Intentar con cada clave disponible en orden, sin retroceder
-    let keyIndex = getNextAvailableKeyIndex(keyState.currentKeyIndex)
+    // Siempre buscar desde el inicio para encontrar la primera key NO fallida.
+    // No usamos currentKeyIndex porque puede haber quedado en -1 tras un fallo previo,
+    // lo que haría que se saltasen keys válidas en la siguiente petición.
+    let keyIndex = getNextAvailableKeyIndex(0)
 
     while (keyIndex !== -1) {
         const apiKey = API_KEYS[keyIndex]
@@ -356,8 +361,7 @@ async function callLLMStreaming(
         }
 
         if (llmRes.ok) {
-            // ✅ Clave funcionó — actualizar el índice global si avanzó
-            if (keyIndex > keyState.currentKeyIndex) keyState.currentKeyIndex = keyIndex
+            // ✅ Clave funcionó
             return buildStreamingResponse(llmRes)
         }
 
@@ -370,7 +374,7 @@ async function callLLMStreaming(
                 `(HTTP ${llmRes.status}). Marcando como fallida.`
             )
             markKeyAsFailed(keyIndex)
-            // Intentar con la siguiente
+            // Buscar la siguiente key disponible
             keyIndex = getNextAvailableKeyIndex(keyIndex + 1)
             continue
         }
@@ -565,7 +569,8 @@ async function callLLMOnce(
         generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
     })
 
-    let keyIndex = getNextAvailableKeyIndex(keyState.currentKeyIndex)
+    // Buscar siempre desde el inicio para no saltarse keys válidas
+    let keyIndex = getNextAvailableKeyIndex(0)
 
     while (keyIndex !== -1) {
         const apiKey = API_KEYS[keyIndex]
@@ -580,7 +585,6 @@ async function callLLMOnce(
         }
 
         if (res.ok) {
-            if (keyIndex > keyState.currentKeyIndex) keyState.currentKeyIndex = keyIndex
             const data = await res.json()
             // Gemini puede devolver el texto dividido en múltiples parts — concatenar todo
             const parts: unknown[] = data?.candidates?.[0]?.content?.parts ?? []
