@@ -11,7 +11,7 @@
 //   npm install -D @types/file-saver
 //
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type React from 'react'
 import {
     Document, Packer, Paragraph, TextRun,
@@ -45,6 +45,8 @@ async function generateGeminiNarrative(
     informe: Estudio['informe'],
     paciente: Paciente | undefined,
     estudio: Estudio | undefined,
+    documentoClinico?: string | null,
+    nombreDocumento?: string | null,
 ): Promise<string | null> {
     const patologiasStr = informe.patologiasRelevantes.length > 0
         ? informe.patologiasRelevantes
@@ -56,7 +58,11 @@ async function generateGeminiNarrative(
         ? `Nombre: ${paciente.nombre}${paciente.fechaNacimiento ? `, Fecha de nacimiento: ${paciente.fechaNacimiento}` : ''}${paciente.notas ? `, Notas: ${paciente.notas}` : ''}`
         : 'No especificado'
 
-    const prompt = `DATOS DEL ANÁLISIS:
+    const documentoSection = documentoClinico
+        ? `\nDOCUMENTO CLÍNICO ADJUNTO (${nombreDocumento ?? 'sin nombre'}):\n"""\n${documentoClinico.slice(0, 6000)}\n"""\nUsa este documento para extraer o completar datos del paciente (nombre, edad, antecedentes, diagnósticos previos, medicamentos, alergias, etc.) que no estén en los campos anteriores. Si hay datos contradictorios, prioriza los del documento.\n`
+        : ''
+
+    const prompt = `DATOS DEL ANÁLISIS:${documentoSection}
 - Paciente: ${pacienteInfo}
 - Archivo: ${estudio?.nombreArchivo ?? 'No especificado'}
 - Fecha del estudio: ${estudio?.creadoEn ?? 'No especificada'}
@@ -66,9 +72,12 @@ async function generateGeminiNarrative(
 - Patologías detectadas: ${patologiasStr}
 ${estudio?.notas ? `- Notas del médico: ${estudio.notas}` : ''}
 
-Genera EXACTAMENTE las siguientes secciones en orden, separadas por una línea en blanco. Usa solo texto plano sin Markdown ni asteriscos. Cada sección debe tener entre 3 y 5 oraciones de profundidad clínica real — no repitas los datos numéricos crudos, interprétalos:
+Genera EXACTAMENTE las siguientes secciones en orden, separadas por una línea en blanco. Usa solo texto plano sin Markdown ni asteriscos. Cada sección debe tener entre 3 y 5 oraciones de profundidad clínica real — no repitas los datos numéricos crudos, interprétalos. Es OBLIGATORIO completar TODAS las secciones sin excepción — no dejes ninguna incompleta ni la omitas.
 
-HALLAZGOS RADIOLÓGICOS
+${documentoClinico ? `DATOS EXTRAÍDOS DEL DOCUMENTO
+[Si el documento clínico adjunto contiene datos del paciente como nombre, fecha de nacimiento, edad, antecedentes patológicos, medicamentos actuales, alergias u otros datos relevantes, resúmelos aquí en 2-4 oraciones. Si el documento no aportó datos adicionales, omite esta sección.]
+
+` : ''}HALLAZGOS RADIOLÓGICOS
 [Describe los hallazgos principales con su significado morfológico y distribución anatómica probable. Menciona la coexistencia de condiciones y su posible relación fisiopatológica. Cita grados de certeza del modelo solo cuando aporten contexto clínico.]
 
 CORRELACIÓN CLÍNICA E INTERPRETACIÓN
@@ -89,10 +98,12 @@ ADVERTENCIA
     try {
         // Las API keys viven en el servidor (AI_API_KEY_1/2/3 sin prefijo NEXT_PUBLIC).
         // El cliente nunca puede acceder a ellas directamente — delegamos al backend.
+        // IMPORTANTE: el handler PUT de /api/chat debe respetar max_tokens del body.
+        // Si lo hardcodea a 1000, la narrativa se corta. Mínimo recomendado: 4096.
         const response = await fetch('/api/chat', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt }),
+            body: JSON.stringify({ prompt, max_tokens: 4096 }),
         })
 
         if (!response.ok) {
@@ -117,6 +128,7 @@ function buildReportLines(
     informe: Estudio['informe'] | null,
     _messages: readonly Mensaje[],
     geminiNarrative: string | null,
+    nombreDocumento?: string | null,
 ): string[] {
     const lines: string[] = []
     const now = new Date().toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'short' })
@@ -130,6 +142,7 @@ function buildReportLines(
         lines.push(`Nombre: ${paciente.nombre}`)
         if (paciente.fechaNacimiento) lines.push(`Fecha de nacimiento: ${paciente.fechaNacimiento}`)
         if (paciente.notas) lines.push(`Notas: ${paciente.notas}`)
+        if (nombreDocumento) lines.push(`Documento clínico adjunto: ${nombreDocumento}`)
         lines.push('')
     }
 
@@ -175,11 +188,12 @@ async function buildPDF(
     informe: Estudio['informe'] | null,
     _messages: readonly Mensaje[],
     geminiNarrative: string | null,
+    nombreDocumento?: string | null,
 ): Promise<{ blob: Blob; filename: string }> {
     const { jsPDF } = await import('jspdf')
     const doc = new jsPDF({ unit: 'mm', format: 'a4' })
 
-    const lines = buildReportLines(paciente, estudio, informe, _messages, geminiNarrative)
+    const lines = buildReportLines(paciente, estudio, informe, _messages, geminiNarrative, nombreDocumento)
 
     const margin = 18
     const pageW = doc.internal.pageSize.getWidth()
@@ -257,6 +271,7 @@ async function buildDOCX(
     informe: Estudio['informe'] | null,
     _messages: readonly Mensaje[],
     geminiNarrative: string | null,
+    nombreDocumento?: string | null,
 ): Promise<{ blob: Blob; filename: string }> {
     const now = new Date().toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'short' })
 
@@ -298,6 +313,7 @@ async function buildDOCX(
         row('Nombre', paciente.nombre)
         if (paciente.fechaNacimiento) row('Fecha de nacimiento', paciente.fechaNacimiento)
         if (paciente.notas) row('Notas', paciente.notas)
+        if (nombreDocumento) row('Documento clínico adjunto', nombreDocumento)
     }
 
     if (estudio && informe) {
@@ -375,7 +391,7 @@ async function buildDOCX(
 
 // ── Modal ────────────────────────────────────────────────────────────────────
 
-export function ReportModal({ paciente, estudio, informe, messages, onClose }: ReportModalProps) {
+export function ReportModal({ paciente, estudio, informe, messages, documentoClinico, nombreDocumento, onClose }: ReportModalProps) {
     const [formato, setFormato] = useState<Formato>('pdf')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -387,20 +403,38 @@ export function ReportModal({ paciente, estudio, informe, messages, onClose }: R
     const [geminiLoading, setGeminiLoading] = useState(false)
     const [geminiError, setGeminiError] = useState(false)
 
-    // Generamos la narrativa al abrir el modal si hay un informe disponible
+    // Guardamos las props en refs para poder leerlas dentro del efecto
+    // sin necesidad de incluirlas como dependencias (no queremos regenerar
+    // la narrativa cada vez que paciente/estudio/informe cambian — solo
+    // cuando el médico adjunta un nuevo documento clínico).
+    const informeRef       = useRef(informe)
+    const pacienteRef      = useRef(paciente)
+    const estudioRef       = useRef(estudio)
+    const nombreDocRef     = useRef(nombreDocumento)
+    informeRef.current     = informe
+    pacienteRef.current    = paciente
+    estudioRef.current     = estudio
+    nombreDocRef.current   = nombreDocumento
+
     useEffect(() => {
-        if (!informe) return
+        if (!informeRef.current) return
         setGeminiLoading(true)
         setGeminiError(false)
-        generateGeminiNarrative(informe, paciente, estudio)
+        setGeminiNarrative(null)
+        generateGeminiNarrative(
+            informeRef.current,
+            pacienteRef.current,
+            estudioRef.current,
+            documentoClinico,
+            nombreDocRef.current,
+        )
             .then(narrative => {
                 setGeminiNarrative(narrative)
                 if (!narrative) setGeminiError(true)
             })
             .catch(() => setGeminiError(true))
             .finally(() => setGeminiLoading(false))
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []) // Solo al montar
+    }, [documentoClinico]) // Re-genera solo cuando cambia el documento adjunto
 
     async function handleDownload() {
         setLoading(true)
@@ -410,9 +444,9 @@ export function ReportModal({ paciente, estudio, informe, messages, onClose }: R
             let filename: string
 
             if (formato === 'pdf') {
-                ;({ blob, filename } = await buildPDF(paciente, estudio, informe, messages, geminiNarrative))
+                ;({ blob, filename } = await buildPDF(paciente, estudio, informe, messages, geminiNarrative, nombreDocumento))
             } else {
-                ;({ blob, filename } = await buildDOCX(paciente, estudio, informe, messages, geminiNarrative))
+                ;({ blob, filename } = await buildDOCX(paciente, estudio, informe, messages, geminiNarrative, nombreDocumento))
             }
 
             // Descargar el archivo
@@ -543,6 +577,7 @@ export function ReportModal({ paciente, estudio, informe, messages, onClose }: R
                         </div>
                         <IncludeRow icon="🧑‍⚕️" label="Datos del paciente"  active={!!paciente}  value={paciente?.nombre} />
                         <IncludeRow icon="🩻" label="Resultado del estudio" active={!!informe}   value={informe ? `${informe.porcentajeCarcinoma}%` : undefined} />
+                        <IncludeRow icon="📄" label="Documento clínico"     active={!!documentoClinico} value={nombreDocumento ?? undefined} />
                         <IncludeRow icon="🤖" label="Interpretación IA"     active={!!geminiNarrative && !geminiLoading} value={geminiLoading ? 'cargando…' : geminiError ? 'no disponible' : undefined} />
                         {!hasContext && (
                             <p style={{ fontSize: 11, color: 'var(--t2)', margin: '6px 0 0' }}>
