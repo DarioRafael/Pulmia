@@ -129,16 +129,6 @@ export function ChatBubbleProvider({ children }: { children: React.ReactNode }) 
                                     }}
                                 >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                <div style={{
-                                                        width: 24, height: 24, borderRadius: 'var(--r4)',
-                                                        background: 'var(--accent)', display: 'flex',
-                                                        alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                                                }}>
-                                                        <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
-                                                                <path d="M7 2V7M4 7C4 9.2 2 10 2 12H6C6 10 7 9 7 7M10 7C10 9.2 12 10 12 12H8C8 10 7 9 7 7"
-                                                                      stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                                        </svg>
-                                                </div>
                                                 <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--t0)', whiteSpace: 'nowrap' }}>
                                 Asistente Médico
                             </span>
