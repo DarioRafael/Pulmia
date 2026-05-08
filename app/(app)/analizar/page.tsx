@@ -260,7 +260,7 @@ export default function AnalizarPage() {
                                 }}>
                                     Cómo funciona
                                 </div>
-                                <PasoFlujo num={1} texto="Sube una radiografía (PNG o JPG)" activo={true} />
+                                <PasoFlujo num={1} texto="Sube una radiografía (PNG)" activo={true} />
                                 <PasoFlujo num={2} texto="Revisa la previsualización y confirma" activo={false} />
                                 <PasoFlujo num={3} texto="El modelo analiza patrones en la imagen" activo={false} />
                                 <PasoFlujo num={4} texto="Obtén el informe y guarda el estudio" activo={false} />
@@ -310,7 +310,7 @@ export default function AnalizarPage() {
                                 <StatBadge
                                     icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M8 3l5 5-5 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                                     label="Formatos"
-                                    value="PNG · JPG"
+                                    value="PNG"
                                 />
                             </div>
                         </div>

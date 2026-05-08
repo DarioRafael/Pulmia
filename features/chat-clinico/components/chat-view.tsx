@@ -119,6 +119,39 @@ function extractBase64FromDataUrl(dataUrl: string): { data: string; mime: string
     return { data, mime }
 }
 
+// Serializa una fila del historial de estudios para el contexto del LLM.
+// `estudioFocalId` indica cuál marcar como seleccionado (solo en modo paciente+estudio).
+function formatearFilaEstudio(e: Estudio, i: number, estudioFocalId?: string): string[] {
+    const sufijo = estudioFocalId && e.id === estudioFocalId ? ' ← ESTUDIO SELECCIONADO' : ''
+    const filas: string[] = [
+        `  ${i + 1}. ${e.nombreArchivo} (${e.creadoEn})${sufijo}`,
+        `     Resultado: ${e.informe.etiquetaCarcinoma} — ${e.informe.porcentajeCarcinoma}% carcinoma — Severidad: ${e.informe.severidad}`,
+    ]
+    if (e.informe.patologiasRelevantes.length > 0) {
+        const pats = e.informe.patologiasRelevantes.map(p => `${p.nombre}:${p.porcentaje}%`).join(', ')
+        filas.push(`     Patologías: ${pats}`)
+    }
+    if (e.notas) filas.push(`     Notas: ${e.notas}`)
+    return filas
+}
+
+// Serializa el detalle ampliado de un estudio (bloque [ESTUDIO SELECCIONADO EN DETALLE]).
+function formatearDetalleEstudio(e: Estudio, encabezado: string): string[] {
+    const filas: string[] = [
+        `\n[${encabezado}: ${e.nombreArchivo}]`,
+        `Fecha: ${e.creadoEn}`,
+        `Resultado: ${e.informe.etiquetaCarcinoma}`,
+        `Probabilidad de carcinoma: ${e.informe.porcentajeCarcinoma}%`,
+        `Severidad: ${e.informe.severidad}`,
+    ]
+    if (e.informe.patologiasRelevantes.length > 0) {
+        filas.push('Patologías detectadas:')
+        e.informe.patologiasRelevantes.forEach(p => filas.push(`  - ${p.nombre}: ${p.porcentaje}%`))
+    }
+    if (e.notas) filas.push(`Notas del médico: ${e.notas}`)
+    return filas
+}
+
 function buildContextBlock(
     paciente: Paciente | undefined,
     estudio: Estudio | undefined,
@@ -134,66 +167,29 @@ function buildContextBlock(
         partes.push(`Total de estudios: ${estudiosDelPaciente.length}`)
 
         if (estudio) {
-            // Modo paciente + estudio específico: mostrar historial completo
-            // marcando cuál es el estudio focal, sin duplicar su detalle.
+            // Modo paciente + estudio específico: historial completo marcando el focal
             if (estudiosDelPaciente.length > 0) {
                 partes.push('\nHistorial de estudios del paciente:')
-                estudiosDelPaciente.forEach((e, i) => {
-                    const esFocal = e.id === estudio.id
-                    partes.push(`  ${i + 1}. ${e.nombreArchivo} (${e.creadoEn})${esFocal ? ' ← ESTUDIO SELECCIONADO' : ''}`)
-                    partes.push(`     Resultado: ${e.informe.etiquetaCarcinoma} — ${e.informe.porcentajeCarcinoma}% carcinoma — Severidad: ${e.informe.severidad}`)
-                    if (e.informe.patologiasRelevantes.length > 0) {
-                        const pats = e.informe.patologiasRelevantes.map(p => `${p.nombre}:${p.porcentaje}%`).join(', ')
-                        partes.push(`     Patologías: ${pats}`)
-                    }
-                    if (e.notas) partes.push(`     Notas: ${e.notas}`)
-                })
+                estudiosDelPaciente.forEach((e, i) =>
+                    partes.push(...formatearFilaEstudio(e, i, estudio.id))
+                )
             }
-
             // Detalle ampliado del estudio seleccionado
-            partes.push(`\n[ESTUDIO SELECCIONADO EN DETALLE: ${estudio.nombreArchivo}]`)
-            partes.push(`Fecha: ${estudio.creadoEn}`)
-            partes.push(`Resultado: ${estudio.informe.etiquetaCarcinoma}`)
-            partes.push(`Probabilidad de carcinoma: ${estudio.informe.porcentajeCarcinoma}%`)
-            partes.push(`Severidad: ${estudio.informe.severidad}`)
-            if (estudio.informe.patologiasRelevantes.length > 0) {
-                partes.push('Patologías detectadas:')
-                estudio.informe.patologiasRelevantes.forEach(p => {
-                    partes.push(`  - ${p.nombre}: ${p.porcentaje}%`)
-                })
-            }
-            if (estudio.notas) partes.push(`Notas del médico: ${estudio.notas}`)
+            partes.push(...formatearDetalleEstudio(estudio, 'ESTUDIO SELECCIONADO EN DETALLE'))
         } else {
-            // Modo paciente sin estudio específico: mostrar todos los estudios completos
+            // Modo paciente sin estudio específico: todos los estudios sin marcar focal
             if (estudiosDelPaciente.length > 0) {
                 partes.push('\nHistorial completo de estudios (sin filtro de estudio):')
-                estudiosDelPaciente.forEach((e, i) => {
-                    partes.push(`  ${i + 1}. ${e.nombreArchivo} (${e.creadoEn})`)
-                    partes.push(`     Resultado: ${e.informe.etiquetaCarcinoma} — ${e.informe.porcentajeCarcinoma}% carcinoma — Severidad: ${e.informe.severidad}`)
-                    if (e.informe.patologiasRelevantes.length > 0) {
-                        const pats = e.informe.patologiasRelevantes.map(p => `${p.nombre}:${p.porcentaje}%`).join(', ')
-                        partes.push(`     Patologías: ${pats}`)
-                    }
-                    if (e.notas) partes.push(`     Notas: ${e.notas}`)
-                })
+                estudiosDelPaciente.forEach((e, i) =>
+                    partes.push(...formatearFilaEstudio(e, i))
+                )
             } else {
                 partes.push('Este paciente no tiene estudios registrados aún.')
             }
         }
     } else if (estudio) {
         // Modo estudio sin paciente (acceso directo por URL o estudio inicial)
-        partes.push(`[CONTEXTO - Estudio: ${estudio.nombreArchivo}]`)
-        partes.push(`Fecha: ${estudio.creadoEn}`)
-        partes.push(`Resultado: ${estudio.informe.etiquetaCarcinoma}`)
-        partes.push(`Probabilidad de carcinoma: ${estudio.informe.porcentajeCarcinoma}%`)
-        partes.push(`Severidad: ${estudio.informe.severidad}`)
-        if (estudio.informe.patologiasRelevantes.length > 0) {
-            partes.push('Patologías detectadas:')
-            estudio.informe.patologiasRelevantes.forEach(p => {
-                partes.push(`  - ${p.nombre}: ${p.porcentaje}%`)
-            })
-        }
-        if (estudio.notas) partes.push(`Notas del médico: ${estudio.notas}`)
+        partes.push(...formatearDetalleEstudio(estudio, 'CONTEXTO - Estudio'))
     }
 
     // Documento clínico adjunto por el médico (PDF o Word)
@@ -215,11 +211,17 @@ function buildContextBlock(
 // ── Componente principal ─────────────────────────────────────────────────────
 
 export function ChatView({ compacto, estudioIdInicial, pacienteIdInicial }: ChatViewProps) {
+    const storageKey = estudioIdInicial
+        ? `estudio:${estudioIdInicial}`
+        : pacienteIdInicial
+            ? `paciente:${pacienteIdInicial}`
+            : 'general'
+
     const {
         messages, isTyping, status,
         addMessage, startStream, appendChunk, endStream, attachGradcam,
         showTyping, hideTyping,
-    } = useChat()
+    } = useChat(storageKey)
 
     const { pacientes } = usePacientes()
     const { estudios } = useEstudios()
