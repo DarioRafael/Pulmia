@@ -102,6 +102,7 @@ async function extractDocumentText(file: File): Promise<string | null> {
 interface ChatViewProps {
     readonly compacto?: boolean
     readonly estudioIdInicial?: string
+    readonly pacienteIdInicial?: string
 }
 
 function buildContentWithImage(text: string, base64: string, mime: string): BloqueContenido[] {
@@ -132,22 +133,56 @@ function buildContextBlock(
         if (paciente.notas) partes.push(`Notas del paciente: ${paciente.notas}`)
         partes.push(`Total de estudios: ${estudiosDelPaciente.length}`)
 
-        if (estudiosDelPaciente.length > 0) {
-            partes.push('\nHistorial de estudios del paciente:')
-            estudiosDelPaciente.forEach((e, i) => {
-                partes.push(`  ${i + 1}. ${e.nombreArchivo} (${e.creadoEn})`)
-                partes.push(`     Resultado: ${e.informe.etiquetaCarcinoma} — ${e.informe.porcentajeCarcinoma}% carcinoma — Severidad: ${e.informe.severidad}`)
-                if (e.informe.patologiasRelevantes.length > 0) {
-                    const pats = e.informe.patologiasRelevantes.map(p => `${p.nombre}:${p.porcentaje}%`).join(', ')
-                    partes.push(`     Patologías: ${pats}`)
-                }
-                if (e.notas) partes.push(`     Notas: ${e.notas}`)
-            })
-        }
-    }
+        if (estudio) {
+            // Modo paciente + estudio específico: mostrar historial completo
+            // marcando cuál es el estudio focal, sin duplicar su detalle.
+            if (estudiosDelPaciente.length > 0) {
+                partes.push('\nHistorial de estudios del paciente:')
+                estudiosDelPaciente.forEach((e, i) => {
+                    const esFocal = e.id === estudio.id
+                    partes.push(`  ${i + 1}. ${e.nombreArchivo} (${e.creadoEn})${esFocal ? ' ← ESTUDIO SELECCIONADO' : ''}`)
+                    partes.push(`     Resultado: ${e.informe.etiquetaCarcinoma} — ${e.informe.porcentajeCarcinoma}% carcinoma — Severidad: ${e.informe.severidad}`)
+                    if (e.informe.patologiasRelevantes.length > 0) {
+                        const pats = e.informe.patologiasRelevantes.map(p => `${p.nombre}:${p.porcentaje}%`).join(', ')
+                        partes.push(`     Patologías: ${pats}`)
+                    }
+                    if (e.notas) partes.push(`     Notas: ${e.notas}`)
+                })
+            }
 
-    if (estudio) {
-        partes.push(`\n[CONTEXTO - Estudio seleccionado: ${estudio.nombreArchivo}]`)
+            // Detalle ampliado del estudio seleccionado
+            partes.push(`\n[ESTUDIO SELECCIONADO EN DETALLE: ${estudio.nombreArchivo}]`)
+            partes.push(`Fecha: ${estudio.creadoEn}`)
+            partes.push(`Resultado: ${estudio.informe.etiquetaCarcinoma}`)
+            partes.push(`Probabilidad de carcinoma: ${estudio.informe.porcentajeCarcinoma}%`)
+            partes.push(`Severidad: ${estudio.informe.severidad}`)
+            if (estudio.informe.patologiasRelevantes.length > 0) {
+                partes.push('Patologías detectadas:')
+                estudio.informe.patologiasRelevantes.forEach(p => {
+                    partes.push(`  - ${p.nombre}: ${p.porcentaje}%`)
+                })
+            }
+            if (estudio.notas) partes.push(`Notas del médico: ${estudio.notas}`)
+        } else {
+            // Modo paciente sin estudio específico: mostrar todos los estudios completos
+            if (estudiosDelPaciente.length > 0) {
+                partes.push('\nHistorial completo de estudios (sin filtro de estudio):')
+                estudiosDelPaciente.forEach((e, i) => {
+                    partes.push(`  ${i + 1}. ${e.nombreArchivo} (${e.creadoEn})`)
+                    partes.push(`     Resultado: ${e.informe.etiquetaCarcinoma} — ${e.informe.porcentajeCarcinoma}% carcinoma — Severidad: ${e.informe.severidad}`)
+                    if (e.informe.patologiasRelevantes.length > 0) {
+                        const pats = e.informe.patologiasRelevantes.map(p => `${p.nombre}:${p.porcentaje}%`).join(', ')
+                        partes.push(`     Patologías: ${pats}`)
+                    }
+                    if (e.notas) partes.push(`     Notas: ${e.notas}`)
+                })
+            } else {
+                partes.push('Este paciente no tiene estudios registrados aún.')
+            }
+        }
+    } else if (estudio) {
+        // Modo estudio sin paciente (acceso directo por URL o estudio inicial)
+        partes.push(`[CONTEXTO - Estudio: ${estudio.nombreArchivo}]`)
         partes.push(`Fecha: ${estudio.creadoEn}`)
         partes.push(`Resultado: ${estudio.informe.etiquetaCarcinoma}`)
         partes.push(`Probabilidad de carcinoma: ${estudio.informe.porcentajeCarcinoma}%`)
@@ -179,7 +214,7 @@ function buildContextBlock(
 
 // ── Componente principal ─────────────────────────────────────────────────────
 
-export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
+export function ChatView({ compacto, estudioIdInicial, pacienteIdInicial }: ChatViewProps) {
     const {
         messages, isTyping, status,
         addMessage, startStream, appendChunk, endStream, attachGradcam,
@@ -193,9 +228,14 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
     const params = useParams()
     const idDeUrl = typeof params?.id === 'string' ? params.id : null
 
-    const [pacienteId, setPacienteId] = useState<string | null>(null)
+    const [pacienteId, setPacienteId] = useState<string | null>(pacienteIdInicial ?? null)
     const [estudioIdManual, setEstudioIdManual] = useState<string | null>(null)
-    const estudioId = estudioIdManual ?? estudioIdInicial ?? idDeUrl ?? null
+
+    // Si hay un paciente seleccionado manualmente, el estudio sólo puede venir
+    // de estudioIdManual (elegido por el usuario en el selector). La URL o el
+    // estudioIdInicial no deben inyectarse como contexto cuando hay un paciente
+    // activo, ya que podrían pertenecer a otro paciente.
+    const estudioId = estudioIdManual ?? (pacienteId ? null : (estudioIdInicial ?? idDeUrl ?? null))
 
     // ── Documento clínico adjunto (PDF o Word) ───────────────────────────────
     // Guardamos el texto extraído del documento más reciente que haya adjuntado
@@ -207,15 +247,25 @@ export function ChatView({ compacto, estudioIdInicial }: ChatViewProps) {
     // ── Estado del modal de reporte ──────────────────────────────────────────
     const [reportModalOpen, setReportModalOpen] = useState(false)
 
-    const pacienteActual = pacientes.find(p => p.id === pacienteId)
     const estudioActual = estudios.find(e => e.id === estudioId)
+    // Resolver paciente: primero por selección manual, luego por el pacienteId del
+    // estudio activo (para que el asistente tenga los datos del paciente cuando se
+    // llega al chat desde la vista de un estudio directamente).
+    const pacienteActual = pacientes.find(p =>
+        p.id === pacienteId || (!pacienteId && p.id === estudioActual?.pacienteId)
+    )
 
     const informeParaChat = estudioActual?.informe ?? informeActivo ?? null
 
-    const estudiosDelPaciente = useMemo(
-        () => pacienteId ? estudios.filter(e => e.pacienteId === pacienteId) : [],
-        [pacienteId, estudios],
-    )
+    // Todos los estudios del paciente seleccionado, ordenados del más reciente al más antiguo.
+    // Si no hay paciente seleccionado manualmente pero el estudio tiene pacienteId asociado,
+    // se recupera igual el historial para que el asistente tenga el contexto completo.
+    const estudiosDelPaciente = useMemo(() => {
+        const pid = pacienteId ?? estudioActual?.pacienteId ?? null
+        if (!pid) return []
+        return [...estudios.filter(e => e.pacienteId === pid)]
+            .sort((a, b) => new Date(b.creadoEn).getTime() - new Date(a.creadoEn).getTime())
+    }, [pacienteId, estudioActual, estudios])
 
     // ── Abrir modal de reporte ───────────────────────────────────────────────
     const handleGenerateReport = useCallback(() => {

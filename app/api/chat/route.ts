@@ -37,7 +37,7 @@ const KEY_COOLDOWN_MS = 24 * 60 * 60 * 1000  // 24 h — límite diario de Gemin
 
 // ── Proveedores LLM con fallback en cascada ────────────────────────────────────
 //
-// Configuración en .env:
+// Configuración en ..env:
 //
 //   # Proveedor principal — Gemini
 //   GEMINI_API_KEY_1=AIzaSy...
@@ -103,7 +103,7 @@ function buildProviders(): Provider[] {
     }
 
     if (providers.length === 0) {
-        console.error('[LLM] No se encontró ningún proveedor configurado en .env')
+        console.error('[LLM] No se encontró ningún proveedor configurado en ..env')
     } else {
         console.log(`[LLM] Proveedores: ${providers.map(p => `${p.name}(${p.keys.length} keys)`).join(' → ')}`)
     }
@@ -662,7 +662,7 @@ async function callLLMStreaming(
 ): Promise<Response> {
     if (PROVIDERS.length === 0) {
         return sseError(
-            'callLLMStreaming: PROVIDERS vacío — ningún proveedor configurado en .env',
+            'callLLMStreaming: PROVIDERS vacío — ningún proveedor configurado en ..env',
             'El servicio no está configurado. Contacta al administrador.',
         )
     }

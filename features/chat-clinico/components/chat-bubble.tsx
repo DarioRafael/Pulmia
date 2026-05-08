@@ -6,6 +6,7 @@
 // Se controla desde fuera con ChatBubbleContext (useChatBubble).
 
 import { useState, useRef, useEffect, useCallback, createContext, useContext } from 'react'
+import { useParams, usePathname } from 'next/navigation'
 import { ChatView } from './chat-view'
 
 // ── Contexto ────────────────────────────────────────────────────────────────
@@ -32,6 +33,23 @@ export function ChatBubbleProvider({ children }: { children: React.ReactNode }) 
         const dragging                = useRef(false)
         const dragOffset              = useRef({ x: 0, y: 0 })
         const windowRef               = useRef<HTMLDivElement>(null)
+
+        // Usar pathname para distinguir entre /pacientes/[id] y /estudios/[id],
+        // ya que ambas rutas usan el mismo nombre de parámetro: [id].
+        const params   = useParams()
+        const pathname = usePathname()
+        const routeId  = typeof params?.id === 'string' ? params.id : null
+
+        const enPaciente = Boolean(pathname?.match(/\/pacientes\/[^/]+(?:\/(?!editar).*)?$/))
+        const enEstudio  = Boolean(pathname?.includes('/estudios/'))
+
+        const routePacienteId = enPaciente ? routeId : null
+        const routeEstudioId  = enEstudio  ? routeId : null
+
+        // La key combina pathname completo para que ChatView se remonte
+        // automáticamente cada vez que el usuario navega a una ruta distinta,
+        // actualizando el contexto del asistente sin necesidad de cerrar el chat.
+        const chatKey = pathname ?? 'default'
 
         const toggle    = useCallback(() => setOpen(v => !v), [])
         const openChat  = useCallback(() => setOpen(true), [])
@@ -174,9 +192,15 @@ export function ChatBubbleProvider({ children }: { children: React.ReactNode }) 
                                         </div>
                                 </div>
 
-                                {/* Chat embebido */}
+                                {/* Chat embebido — key={chatKey} fuerza remount al cambiar de ruta,
+                                    actualizando el contexto automáticamente sin cerrar el panel */}
                                 <div style={{ flex: 1, overflow: 'hidden' }}>
-                                        <ChatView compacto />
+                                        <ChatView
+                                            key={chatKey}
+                                            compacto
+                                            pacienteIdInicial={routePacienteId ?? undefined}
+                                            estudioIdInicial={routeEstudioId ?? undefined}
+                                        />
                                 </div>
                         </div>
                     )}
