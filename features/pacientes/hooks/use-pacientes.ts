@@ -35,10 +35,18 @@ export function usePacientes() {
         setPacientes(leerPacientes())
     }, [])
 
+    function generarId(): string {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            return crypto.randomUUID()
+        }
+        // Fallback for HTTP / older environments
+        return Date.now().toString(36) + Math.random().toString(36).slice(2)
+    }
+
     const guardar = useCallback((nuevo: PacienteNuevo): Paciente => {
         const paciente: Paciente = {
             ...nuevo,
-            id: crypto.randomUUID(),
+            id: generarId(),
             creadoEn: new Date().toISOString(),
         }
         setPacientes(prev => {
