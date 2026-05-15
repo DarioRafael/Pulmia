@@ -257,7 +257,13 @@ export function ChatView({ compacto, estudioIdInicial, pacienteIdInicial }: Chat
         p.id === pacienteId || (!pacienteId && p.id === estudioActual?.pacienteId)
     )
 
-    const informeParaChat = estudioActual?.informe ?? informeActivo ?? null
+    // Solo usar informeActivo si NO hay un paciente seleccionado,
+    // o si el informeActivo pertenece a un estudio de ese mismo paciente.
+    const informeActivoPerteneceAlPaciente = !pacienteActual
+        || estudios.some(e => e.pacienteId === pacienteActual.id && e.informe === informeActivo)
+
+    const informeParaChat = estudioActual?.informe
+        ?? (informeActivoPerteneceAlPaciente ? informeActivo : null)
 
     // Todos los estudios del paciente seleccionado, ordenados del más reciente al más antiguo.
     // Si no hay paciente seleccionado manualmente pero el estudio tiene pacienteId asociado,
