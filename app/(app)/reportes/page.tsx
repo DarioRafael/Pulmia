@@ -78,25 +78,6 @@ export default function ReportesPage() {
             />
             <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
 
-                {/* Botón exportar */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
-                    <button
-                        onClick={() => router.push('/estudios')}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: 8,
-                            padding: '8px 16px', borderRadius: 8,
-                            background: 'transparent',
-                            border: '1px solid var(--t0)',
-                            color: 'var(--t0)', fontSize: 13, fontWeight: 600,
-                            cursor: 'pointer', letterSpacing: '0.02em',
-                            fontFamily: 'var(--mono)',
-                        }}
-                    >
-                        <span style={{ fontSize: 14 }}>↓</span>
-                        Exportar nuevo
-                    </button>
-                </div>
-
                 {/* Estadísticas: Total, PDF, Word */}
                 <div style={{ display: 'flex', gap: 12, marginBottom: 28, flexWrap: 'wrap' }}>
                     <div style={{
