@@ -19,6 +19,7 @@ interface ChatBubbleContextValue {
         setIsAiTyping: (v: boolean) => void
         unreadCount: number
         setUnreadCount: (v: number) => void
+        registerClear: (fn: () => void) => void
 }
 
 const ChatBubbleContext = createContext<ChatBubbleContextValue | null>(null)
@@ -41,6 +42,9 @@ export function ChatBubbleProvider({ children }: { children: React.ReactNode }) 
         const dragging                    = useRef(false)
         const dragOffset                  = useRef({ x: 0, y: 0 })
         const windowRef                   = useRef<HTMLDivElement>(null)
+        const clearRef                    = useRef<(() => void) | null>(null)
+
+        const registerClear = useCallback((fn: () => void) => { clearRef.current = fn }, [])
 
         // Usar pathname para distinguir entre /pacientes/[id] y /estudios/[id],
         // ya que ambas rutas usan el mismo nombre de parámetro: [id].
@@ -155,7 +159,7 @@ export function ChatBubbleProvider({ children }: { children: React.ReactNode }) 
         }
 
         return (
-            <ChatBubbleContext.Provider value={{ open, toggle, openChat, closeChat, isAiTyping, setIsAiTyping, unreadCount, setUnreadCount }}>
+            <ChatBubbleContext.Provider value={{ open, toggle, openChat, closeChat, isAiTyping, setIsAiTyping, unreadCount, setUnreadCount, registerClear }}>
                     {children}
 
                     {(open || closing) && (
@@ -205,6 +209,34 @@ export function ChatBubbleProvider({ children }: { children: React.ReactNode }) 
                                         </div>
 
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                <button
+                                                    onClick={() => clearRef.current?.()}
+                                                    title="Limpiar conversación"
+                                                    style={{
+                                                            width: 26, height: 26, borderRadius: 'var(--r4)',
+                                                            background: 'transparent', border: '1px solid var(--border)',
+                                                            color: 'var(--t2)', cursor: 'pointer',
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                            transition: 'all 0.15s ease',
+                                                    }}
+                                                    onMouseEnter={e => {
+                                                            (e.currentTarget as HTMLElement).style.transform = 'scale(1.12)'
+                                                            ;(e.currentTarget as HTMLElement).style.background = 'rgba(220,50,50,0.08)'
+                                                            ;(e.currentTarget as HTMLElement).style.borderColor = 'rgba(220,50,50,0.35)'
+                                                            ;(e.currentTarget as HTMLElement).style.color = '#dc3232'
+                                                    }}
+                                                    onMouseLeave={e => {
+                                                            (e.currentTarget as HTMLElement).style.transform = 'scale(1)'
+                                                            ;(e.currentTarget as HTMLElement).style.background = 'transparent'
+                                                            ;(e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'
+                                                            ;(e.currentTarget as HTMLElement).style.color = 'var(--t2)'
+                                                    }}
+                                                >
+                                                        <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                                                                <path d="M2 3h8M5 3V2h2v1M10 3l-.7 7H2.7L2 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                                                        </svg>
+                                                </button>
+
                                                 <button
                                                     onClick={handlePopOut}
                                                     title={floating ? 'Anclar panel' : 'Hacer ventana libre'}

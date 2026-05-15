@@ -13,13 +13,14 @@
 // clínicos del paciente. El texto extraído se inyecta como contexto adicional
 // en el sistema, enriqueciendo las respuestas y los reportes generados.
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { ListaMensajes } from './lista-mensajes'
 import { BarraInput } from './barra-input'
 import { SelectorContexto } from './selector-contexto'
 import { ReportModal } from './report-modal'
 import { useChat } from '../hooks/use-chat'
+import { useChatBubble } from './chat-bubble'
 import { streamChat } from '../api'
 import { usePacientes } from '@/features/pacientes'
 import { useEstudios } from '@/features/estudios'
@@ -220,8 +221,11 @@ export function ChatView({ compacto, estudioIdInicial, pacienteIdInicial }: Chat
     const {
         messages, isTyping, status,
         addMessage, startStream, appendChunk, endStream, attachGradcam,
-        showTyping, hideTyping,
+        showTyping, hideTyping, clearMessages,
     } = useChat(storageKey)
+
+    const { registerClear } = useChatBubble()
+    useEffect(() => { registerClear(clearMessages) }, [registerClear, clearMessages])
 
     const { pacientes } = usePacientes()
     const { estudios } = useEstudios()
