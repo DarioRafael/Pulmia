@@ -225,7 +225,6 @@ export default function AnalizarPage() {
                                 color: 'var(--accent)', letterSpacing: '0.1em',
                                 textTransform: 'uppercase', marginBottom: 8,
                             }}>
-                                Módulo de análisis
                             </div>
                             <h2 style={{
                                 fontSize: 26, fontWeight: 700, color: 'var(--t0)',

@@ -93,7 +93,7 @@ export function ZonaSubida({ onArchivo, disabled }: ZonaSubidaProps) {
                     Arrastra una imagen aquí o haz click para seleccionar.
                     <br />
                     <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--t2)' }}>
-                        PNG, JPG, DICOM (próximamente)
+                        PNG (próximamente DICOM)
                     </span>
                 </div>
             </div>

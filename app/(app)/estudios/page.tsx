@@ -214,9 +214,9 @@ export default function EstudiosPage() {
                 {totalEstudios === 0 && (
                     <div style={{
                         textAlign: 'center', padding: '48px 24px',
-                        color: 'var(--t2)', fontSize: 13,
+                        color: 'var(--t2)', fontSize: 16,
                     }}>
-                        <div style={{ fontSize: 32, marginBottom: 12 }}>🫁</div>
+                        <div style={{ fontSize: 32, marginBottom: 12 }}></div>
                         Sin estudios aún. Analiza una radiografía para comenzar.
                     </div>
                 )}

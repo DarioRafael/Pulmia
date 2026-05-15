@@ -158,7 +158,6 @@ export function SidebarApp({ collapsed, onToggle }: SidebarAppProps) {
                     letterSpacing: '0.1em',
                     textTransform: 'uppercase',
                 }}>
-                    Principal
                 </div>
             )}
 

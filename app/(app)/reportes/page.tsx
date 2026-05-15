@@ -223,8 +223,8 @@ export default function ReportesPage() {
                 )}
 
                 {totalDocumentos === 0 && (
-                    <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--t2)', fontSize: 13 }}>
-                        <div style={{ fontSize: 32, marginBottom: 12 }}>📄</div>
+                    <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--t2)', fontSize: 16 }}>
+                        <div style={{ fontSize: 32, marginBottom: 12 }}></div>
                         Sin documentos exportados. Analiza un estudio y exporta un informe para comenzar.
                     </div>
                 )}

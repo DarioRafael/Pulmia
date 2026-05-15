@@ -17,9 +17,9 @@ export function ListaPacientes({ pacientes, estudios, onSeleccionar }: ListaPaci
         return (
             <div style={{
                 textAlign: 'center', padding: '48px 24px',
-                color: 'var(--t2)', fontSize: 13,
+                color: 'var(--t2)', fontSize: 16,
             }}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>👤</div>
+                <div style={{ fontSize: 32, marginBottom: 12 }}></div>
                 Sin pacientes registrados. Se crean al guardar un estudio.
             </div>
         )

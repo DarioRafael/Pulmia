@@ -829,10 +829,10 @@ export function ReportModal({ paciente, estudio, informe, messages, documentoCli
                         }}>
                             Contenido del reporte
                         </div>
-                        <IncludeRow icon="🧑‍⚕️" label="Datos del paciente"  active={!!paciente}  value={paciente?.nombre} />
-                        <IncludeRow icon="🩻" label="Resultado del estudio" active={!!informe}   value={informe ? `${informe.porcentajeCarcinoma}%` : undefined} />
-                        <IncludeRow icon="📄" label="Documento clínico"     active={!!documentoClinico} value={nombreDocumento ?? undefined} />
-                        <IncludeRow icon="🤖" label="Interpretación IA"     active={!!geminiNarrative && !geminiLoading} value={geminiLoading ? 'cargando…' : geminiError ? 'no disponible' : undefined} />
+                        <IncludeRow icon="️" label="Datos del paciente"  active={!!paciente}  value={paciente?.nombre} />
+                        <IncludeRow icon="" label="Resultado del estudio" active={!!informe}   value={informe ? `${informe.porcentajeCarcinoma}%` : undefined} />
+                        <IncludeRow icon="" label="Documento clínico"     active={!!documentoClinico} value={nombreDocumento ?? undefined} />
+                        <IncludeRow icon="" label="Interpretación IA"     active={!!geminiNarrative && !geminiLoading} value={geminiLoading ? 'cargando…' : geminiError ? 'no disponible' : undefined} />
                         {!hasContext && (
                             <p style={{ fontSize: 11, color: 'var(--t2)', margin: '6px 0 0' }}>
                                 Sin contexto seleccionado. El reporte estará vacío.
