@@ -4,6 +4,8 @@
 // Permite ver un resumen de PDFs y Word generados, agrupados por paciente.
 
 import { HeaderApp } from '@/components/layout/header-app'
+import { MedicalDisclaimer } from '@/components/medical/medical-disclaimer'
+import { useEstudios } from '@/features/estudios'
 import { usePacientes } from '@/features/pacientes'
 import { useDocumentosExportados } from '@/features/reportes'
 import { useRouter } from 'next/navigation'
@@ -61,7 +63,9 @@ function TipoBadge({ tipo }: { tipo: 'pdf' | 'docx' }) {
 export default function ReportesPage() {
     const { documentos, totalDocumentos, totalPdf, totalDocx } = useDocumentosExportados()
     const { pacientes } = usePacientes()
+    const { estudios } = useEstudios()
     const router = useRouter()
+    const hayEstudios = estudios.length > 0
 
     // Agrupar documentos por paciente.
     const sinPaciente = documentos.filter((d: DocumentoExportado) => !d.pacienteId)
@@ -242,9 +246,108 @@ export default function ReportesPage() {
                 )}
 
                 {totalDocumentos === 0 && (
-                    <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--t2)', fontSize: 13 }}>
-                        <div style={{ fontSize: 32, marginBottom: 12 }}>📄</div>
-                        Sin documentos exportados. Analiza un estudio y exporta un informe para comenzar.
+                    <div style={{
+                        maxWidth: 560, margin: '24px auto',
+                        padding: '32px 28px',
+                        borderRadius: 16,
+                        background: 'var(--bg-2)',
+                        border: '1px dashed var(--border-h)',
+                    }}>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: 12,
+                            marginBottom: 16,
+                        }}>
+                            <div style={{
+                                width: 44, height: 44, borderRadius: 12,
+                                background: 'var(--accent-glow)',
+                                border: '1px solid var(--accent)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                color: 'var(--accent)',
+                                flexShrink: 0,
+                            }}>
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                                    <path d="M6 3H14L18 7V21H6V3Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                                    <path d="M14 3V7H18" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                                    <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                                    <line x1="9" y1="15" x2="15" y2="15" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                                </svg>
+                            </div>
+                            <div>
+                                <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--t0)', marginBottom: 2 }}>
+                                    Sin documentos exportados
+                                </div>
+                                <div style={{ fontSize: 12, color: 'var(--t2)', fontFamily: 'var(--mono)', letterSpacing: '0.02em' }}>
+                                    Aquí aparecerán los PDFs y Word que generes
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{
+                            fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--t2)',
+                            letterSpacing: '0.08em', textTransform: 'uppercase',
+                            marginBottom: 10, marginTop: 10,
+                        }}>
+                            Cómo generar tu primer reporte
+                        </div>
+
+                        <ol style={{ paddingLeft: 0, listStyle: 'none', margin: 0 }}>
+                            {[
+                                { n: 1, t: hayEstudios ? 'Ya tienes estudios disponibles' : 'Analiza una radiografía y guarda el estudio', completo: hayEstudios },
+                                { n: 2, t: 'Abre el estudio desde la página Estudios', completo: false },
+                                { n: 3, t: 'Usa el botón “Exportar” para generar el PDF o Word', completo: false },
+                                { n: 4, t: 'El documento aparecerá aquí para consultarse cuando quieras', completo: false },
+                            ].map((paso) => (
+                                <li key={paso.n} style={{
+                                    display: 'flex', alignItems: 'flex-start', gap: 12,
+                                    padding: '8px 0',
+                                }}>
+                                    <div style={{
+                                        width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                                        background: paso.completo ? 'var(--ok)' : 'var(--bg-3)',
+                                        border: `1px solid ${paso.completo ? 'var(--ok)' : 'var(--border-h)'}`,
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        fontSize: 11, fontWeight: 600,
+                                        color: paso.completo ? '#fff' : 'var(--t2)',
+                                        fontFamily: 'var(--mono)',
+                                        marginTop: 1,
+                                    }}>
+                                        {paso.completo ? (
+                                            <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                                                <path d="M3 6.5L5 8.5L9 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                                            </svg>
+                                        ) : paso.n}
+                                    </div>
+                                    <span style={{ fontSize: 13, color: paso.completo ? 'var(--t1)' : 'var(--t1)', lineHeight: 1.55 }}>
+                                        {paso.t}
+                                    </span>
+                                </li>
+                            ))}
+                        </ol>
+
+                        <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+                            <button
+                                onClick={() => router.push(hayEstudios ? '/estudios' : '/analizar')}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                                    padding: '10px 18px', borderRadius: 10,
+                                    background: 'var(--accent)', color: '#fff', border: 'none',
+                                    fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                                    boxShadow: 'var(--shadow-accent)',
+                                }}
+                            >
+                                {hayEstudios ? 'Ir a estudios' : 'Empezar a analizar'}
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                                    <path d="M3 8h10M8 3l5 5-5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Disclaimer compact al final */}
+                {totalDocumentos > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
+                        <MedicalDisclaimer variante="compact" />
                     </div>
                 )}
             </div>

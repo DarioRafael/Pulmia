@@ -11,7 +11,7 @@
 //   npm install -D @types/file-saver
 //
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type React from 'react'
 import {
     Document, Packer, Paragraph, TextRun,
@@ -45,6 +45,8 @@ async function generateGeminiNarrative(
     informe: Estudio['informe'],
     paciente: Paciente | undefined,
     estudio: Estudio | undefined,
+    documentoClinico?: string | null,
+    nombreDocumento?: string | null,
 ): Promise<string | null> {
     const patologiasStr = informe.patologiasRelevantes.length > 0
         ? informe.patologiasRelevantes
@@ -56,43 +58,57 @@ async function generateGeminiNarrative(
         ? `Nombre: ${paciente.nombre}${paciente.fechaNacimiento ? `, Fecha de nacimiento: ${paciente.fechaNacimiento}` : ''}${paciente.notas ? `, Notas: ${paciente.notas}` : ''}`
         : 'No especificado'
 
-    const prompt = `DATOS DEL ANÁLISIS:
+    const documentoSection = documentoClinico
+        ? `\nDOCUMENTO CLÍNICO ADJUNTO (${nombreDocumento ?? 'sin nombre'}):\n"""\n${documentoClinico.slice(0, 6000)}\n"""\nUsa este documento para extraer o completar datos del paciente (nombre, edad, antecedentes, diagnósticos previos, medicamentos, alergias, etc.) que no estén en los campos anteriores. Si hay datos contradictorios, prioriza los del documento.\n`
+        : ''
+
+    const prompt = `Eres un radiólogo clínico experto redactando un informe médico formal para un expediente clínico. Redacta en español, con terminología médica precisa y en tercera persona.
+
+DATOS DEL ANÁLISIS:${documentoSection}
 - Paciente: ${pacienteInfo}
-- Archivo: ${estudio?.nombreArchivo ?? 'No especificado'}
+- Archivo analizado: ${estudio?.nombreArchivo ?? 'No especificado'}
 - Fecha del estudio: ${estudio?.creadoEn ?? 'No especificada'}
-- Resultado del modelo: ${informe.etiquetaCarcinoma}
-- Probabilidad de carcinoma: ${informe.porcentajeCarcinoma}%
-- Severidad: ${informe.severidad}
-- Patologías detectadas: ${patologiasStr}
-${estudio?.notas ? `- Notas del médico: ${estudio.notas}` : ''}
+- Resultado del modelo de IA: ${informe.etiquetaCarcinoma}
+- Probabilidad de carcinoma calculada: ${informe.porcentajeCarcinoma}%
+- Nivel de severidad asignado: ${informe.severidad}
+- Patologías con mayor relevancia estadística: ${patologiasStr}
+${estudio?.notas ? `- Observaciones del médico solicitante: ${estudio.notas}` : ''}
 
-Genera EXACTAMENTE las siguientes secciones en orden, separadas por una línea en blanco. Usa solo texto plano sin Markdown ni asteriscos. Cada sección debe tener entre 3 y 5 oraciones de profundidad clínica real — no repitas los datos numéricos crudos, interprétalos:
+Genera EXACTAMENTE las siguientes secciones en orden, separadas por una línea en blanco. Usa SOLO texto plano sin Markdown, asteriscos ni símbolos especiales. Cada título de sección debe ir en su propia línea, en MAYÚSCULAS. El contenido de cada sección debe tener entre 4 y 6 oraciones con profundidad clínica real — interpreta los datos, no los repitas literalmente. NO uses listas con guiones ni viñetas dentro del cuerpo; redacta en prosa fluida. Es OBLIGATORIO completar TODAS las secciones sin excepción.
 
-HALLAZGOS RADIOLÓGICOS
-[Describe los hallazgos principales con su significado morfológico y distribución anatómica probable. Menciona la coexistencia de condiciones y su posible relación fisiopatológica. Cita grados de certeza del modelo solo cuando aporten contexto clínico.]
+${documentoClinico ? `DATOS EXTRAÍDOS DEL DOCUMENTO CLÍNICO ADJUNTO
+Extrae y presenta en prosa los datos clínicos del paciente contenidos en el documento adjunto: nombre completo, edad, fecha de nacimiento, antecedentes patológicos personales y familiares, medicamentos actuales, alergias documentadas, estudios previos relevantes y cualquier diagnóstico previo pertinente. Si el documento no contiene información adicional más allá de la ya registrada, indícalo explícitamente.
 
-CORRELACIÓN CLÍNICA E INTERPRETACIÓN
-[Interpreta el significado clínico conjunto de los hallazgos. Plantea 2-3 diagnósticos diferenciales ordenados por probabilidad, justificando brevemente cada uno. Comenta si la probabilidad de carcinoma es consistente o discordante con el patrón de hallazgos acompañantes.]
+` : ''}DESCRIPCIÓN DE HALLAZGOS RADIOLÓGICOS
+Describe detalladamente los hallazgos imagenológicos identificados por el modelo de análisis automatizado. Incluye su localización anatómica probable, características morfológicas (tamaño estimado, densidad, márgenes, distribución), y la coexistencia de condiciones asociadas. Contextualiza la probabilidad estadística reportada en términos de su relevancia clínica y menciona cómo los hallazgos secundarios complementan o modulan la interpretación del hallazgo principal.
 
-NIVEL DE URGENCIA Y JUSTIFICACIÓN
-[Clasifica el caso como Urgente, Prioritario o Rutinario. Justifica la clasificación basándote en la combinación de hallazgos y su impacto potencial en el manejo del paciente.]
+DIAGNÓSTICO DIFERENCIAL Y CORRELACIÓN CLÍNICA
+Plantea los diagnósticos diferenciales más probables en orden descendente de probabilidad, justificando cada uno con base en los hallazgos radiológicos y los datos clínicos disponibles. Analiza si la probabilidad de carcinoma reportada por el modelo es concordante con el patrón de hallazgos acompañantes o si existe discordancia que requiera consideración adicional. Señala qué características favorecen o contraindican cada diagnóstico diferencial.
 
-PLAN DIAGNÓSTICO RECOMENDADO
-[Enumera 3-5 estudios o acciones clínicas concretas (con modalidad específica: ecocardiograma, TAC de alta resolución, broncoscopía, etc.), en orden de prioridad. Para cada uno, indica qué información aportaría al diagnóstico diferencial.]
+CLASIFICACIÓN DE URGENCIA Y PRIORIDAD DE ATENCIÓN
+Clasifica el caso como URGENTE, PRIORITARIO o RUTINARIO. Justifica la clasificación considerando la probabilidad de malignidad, la severidad de los hallazgos, el riesgo de deterioro clínico si se retrasa la atención, y las implicaciones pronósticas de un diagnóstico tardío. Indica el tiempo máximo recomendado para la intervención o seguimiento según la clasificación asignada.
 
-CONSIDERACIONES ESPECIALES
-[Una o dos advertencias clínicas relevantes: factores que pueden afectar la interpretación del modelo, comorbilidades que cambiarían el manejo, o aspectos que el especialista debe tener en cuenta antes de tomar decisiones.]
+PLAN DE ESTUDIO Y MANEJO RECOMENDADO
+Describe en prosa los estudios complementarios y acciones clínicas recomendadas en orden de prioridad, especificando la modalidad exacta de cada uno (por ejemplo: tomografía computarizada de tórax de alta resolución con contraste, broncoscopía flexible con biopsia transbronquial, ecocardiograma transtorácico, PET-CT con FDG). Para cada estudio, explica qué información adicional aportaría y cómo contribuiría a confirmar o descartar los diagnósticos diferenciales planteados. Incluye también recomendaciones de interconsulta con especialidades relevantes.
 
-ADVERTENCIA
-[Una oración recordando que este análisis es generado por un modelo de inteligencia artificial y debe ser validado e interpretado por un médico especialista antes de tomar decisiones clínicas.]`
+CONSIDERACIONES CLÍNICAS ESPECIALES
+Señala factores específicos del caso que pueden influir en la interpretación del modelo o en las decisiones clínicas: limitaciones técnicas del estudio, comorbilidades que podrían modificar el manejo, características del paciente que elevan o reducen el riesgo, y aspectos que el especialista debe ponderar antes de tomar decisiones terapéuticas. Menciona si existen condiciones que podrían generar falsos positivos o negativos en el análisis automatizado.
+
+RESUMEN EJECUTIVO
+Resume en 3 a 4 oraciones los puntos más relevantes del caso: hallazgo principal, probabilidad de malignidad, clasificación de urgencia y acción más prioritaria recomendada. Este resumen está dirigido al médico tratante para una revisión rápida del caso.
+
+NOTA DE VALIDACIÓN
+Este informe fue generado mediante análisis automatizado por inteligencia artificial y tiene carácter orientativo. Debe ser revisado, validado e interpretado por un médico especialista certificado antes de tomar cualquier decisión clínica, diagnóstica o terapéutica. El modelo de IA no sustituye el juicio clínico del profesional de la salud responsable del paciente.`
 
     try {
         // Las API keys viven en el servidor (AI_API_KEY_1/2/3 sin prefijo NEXT_PUBLIC).
         // El cliente nunca puede acceder a ellas directamente — delegamos al backend.
+        // IMPORTANTE: el handler PUT de /api/chat debe respetar max_tokens del body.
+        // Si lo hardcodea a 1000, la narrativa se corta. Mínimo recomendado: 4096.
         const response = await fetch('/api/chat', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt }),
+            body: JSON.stringify({ prompt, max_tokens: 4096 }),
         })
 
         if (!response.ok) {
@@ -117,48 +133,68 @@ function buildReportLines(
     informe: Estudio['informe'] | null,
     _messages: readonly Mensaje[],
     geminiNarrative: string | null,
+    nombreDocumento?: string | null,
 ): string[] {
     const lines: string[] = []
     const now = new Date().toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'short' })
+    const folio = `RPT-${Date.now().toString(36).toUpperCase()}`
 
+    // ── Encabezado ──
     lines.push('REPORTE CLÍNICO — ASISTENTE MÉDICO IA')
-    lines.push(`Generado: ${now}`)
+    lines.push(`Folio: ${folio}`)
+    lines.push(`Fecha de generación: ${now}`)
+    lines.push('CONFIDENCIAL — USO EXCLUSIVO DEL PERSONAL MÉDICO AUTORIZADO')
     lines.push('')
 
+    // ── Datos del Paciente ──
     if (paciente) {
-        lines.push('── PACIENTE ──────────────────────────────────────────')
-        lines.push(`Nombre: ${paciente.nombre}`)
+        lines.push('── I. DATOS DEL PACIENTE ────────────────────────────')
+        lines.push(`Nombre completo: ${paciente.nombre}`)
         if (paciente.fechaNacimiento) lines.push(`Fecha de nacimiento: ${paciente.fechaNacimiento}`)
-        if (paciente.notas) lines.push(`Notas: ${paciente.notas}`)
+        if (paciente.notas) lines.push(`Antecedentes / Notas clínicas: ${paciente.notas}`)
+        if (nombreDocumento) lines.push(`Documento clínico adjunto: ${nombreDocumento}`)
         lines.push('')
     }
 
+    // ── Datos del Estudio ──
     if (estudio && informe) {
-        lines.push('── ESTUDIO ANALIZADO ─────────────────────────────────')
-        lines.push(`Archivo: ${estudio.nombreArchivo}`)
-        lines.push(`Fecha: ${estudio.creadoEn}`)
-        lines.push(`Resultado: ${informe.etiquetaCarcinoma}`)
+        lines.push('── II. DATOS DEL ESTUDIO ANALIZADO ──────────────────')
+        lines.push(`Archivo de imagen: ${estudio.nombreArchivo}`)
+        lines.push(`Fecha de realización: ${estudio.creadoEn}`)
+        lines.push(`Identificador de estudio: ${estudio.id ?? '—'}`)
+        lines.push('')
+
+        lines.push('── III. RESULTADOS DEL ANÁLISIS ─────────────────────')
+        lines.push(`Diagnóstico del modelo: ${informe.etiquetaCarcinoma}`)
         lines.push(`Probabilidad de carcinoma: ${informe.porcentajeCarcinoma}%`)
-        lines.push(`Severidad: ${informe.severidad}`)
+        lines.push(`Nivel de severidad: ${informe.severidad}`)
+
         if (informe.patologiasRelevantes.length > 0) {
-            lines.push('Patologías detectadas:')
+            lines.push('')
+            lines.push('Patologías detectadas con relevancia estadística:')
             informe.patologiasRelevantes.forEach(p => {
                 lines.push(`  • ${p.nombre}: ${p.porcentaje}%`)
             })
         }
-        if (estudio.notas) lines.push(`Notas del médico: ${estudio.notas}`)
+
+        if (estudio.notas) {
+            lines.push('')
+            lines.push(`Observaciones del médico solicitante: ${estudio.notas}`)
+        }
         lines.push('')
     }
 
-    // ── Interpretación Clínica generada por Gemini ──────────────────────────
+    // ── Interpretación IA ──
     if (geminiNarrative) {
-        lines.push('── INTERPRETACIÓN CLÍNICA (IA) ───────────────────────')
+        lines.push('── IV. ANÁLISIS CLÍNICO GENERADO POR IA ─────────────')
         geminiNarrative.split('\n').forEach(l => lines.push(l))
         lines.push('')
     }
 
+    // ── Pie de documento ──
     lines.push('─────────────────────────────────────────────────────')
-    lines.push('Documento generado automáticamente. No reemplaza el criterio clínico.')
+    lines.push(`Folio: ${folio}  |  Generado: ${now}`)
+    lines.push('Este documento fue generado automáticamente. No reemplaza el criterio clínico del médico especialista.')
 
     return lines
 }
@@ -175,67 +211,230 @@ async function buildPDF(
     informe: Estudio['informe'] | null,
     _messages: readonly Mensaje[],
     geminiNarrative: string | null,
+    nombreDocumento?: string | null,
 ): Promise<{ blob: Blob; filename: string }> {
     const { jsPDF } = await import('jspdf')
     const doc = new jsPDF({ unit: 'mm', format: 'a4' })
 
-    const lines = buildReportLines(paciente, estudio, informe, _messages, geminiNarrative)
+    const lines = buildReportLines(paciente, estudio, informe, _messages, geminiNarrative, nombreDocumento)
+    const now = new Date().toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'short' })
+    const folio = lines.find(l => l.startsWith('Folio:'))?.replace('Folio: ', '') ?? ''
 
-    const margin = 18
     const pageW = doc.internal.pageSize.getWidth()
     const pageH = doc.internal.pageSize.getHeight()
-    let y = margin
+    const marginL = 20
+    const marginR = 20
+    const contentW = pageW - marginL - marginR
 
-    // ─ Header con fondo ─
-    doc.setFillColor(15, 30, 70)
-    doc.rect(0, 0, pageW, 22, 'F')
-    doc.setTextColor(255, 255, 255)
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(13)
-    doc.text('Reporte Clínico — Asistente Médico IA', margin, 14)
-    doc.setTextColor(30, 30, 30)
-    y = 32
+    // ── Helper: agregar número de página y pie en cada hoja ──
+    function drawPageChrome(pageNum: number) {
+        // Banda superior azul oscuro
+        doc.setFillColor(10, 25, 60)
+        doc.rect(0, 0, pageW, 18, 'F')
+        // Línea acento azul claro
+        doc.setFillColor(43, 107, 224)
+        doc.rect(0, 18, pageW, 1.2, 'F')
 
-    for (const line of lines) {
-        if (line.startsWith('REPORTE CLÍNICO') || line.startsWith('Generado:')) continue
+        // Título en header
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(9.5)
+        doc.setTextColor(255, 255, 255)
+        doc.text('REPORTE CLÍNICO — ASISTENTE MÉDICO IA', marginL, 11.5)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7.5)
+        doc.setTextColor(160, 185, 230)
+        doc.text(`CONFIDENCIAL`, pageW - marginR, 11.5, { align: 'right' })
 
-        if (y > pageH - margin) {
-            doc.addPage()
-            y = margin
-        }
+        // Pie de página
+        doc.setFillColor(245, 247, 252)
+        doc.rect(0, pageH - 12, pageW, 12, 'F')
+        doc.setDrawColor(210, 218, 235)
+        doc.setLineWidth(0.3)
+        doc.line(0, pageH - 12, pageW, pageH - 12)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7)
+        doc.setTextColor(130, 140, 160)
+        doc.text(`Folio: ${folio}`, marginL, pageH - 5)
+        doc.text(`Generado: ${now}`, pageW / 2, pageH - 5, { align: 'center' })
+        doc.text(`Página ${pageNum}`, pageW - marginR, pageH - 5, { align: 'right' })
+    }
 
-        if (line.startsWith('──')) {
-            doc.setFillColor(235, 240, 255)
-            doc.rect(margin - 2, y - 4, pageW - (margin - 2) * 2, 7, 'F')
-            doc.setFont('helvetica', 'bold')
+    let pageNum = 1
+    drawPageChrome(pageNum)
+    let y = 26
+
+    // ── Bloque de resumen superior (metadatos clave) ──
+    if (paciente || informe) {
+        doc.setFillColor(237, 242, 255)
+        doc.setDrawColor(180, 200, 245)
+        doc.setLineWidth(0.3)
+        doc.roundedRect(marginL, y, contentW, paciente && informe ? 22 : 12, 2, 2, 'FD')
+
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(8)
+        doc.setTextColor(30, 60, 140)
+        let colX = marginL + 4
+        if (paciente) {
+            doc.text('PACIENTE', colX, y + 5)
+            doc.setFont('helvetica', 'normal')
+            doc.setTextColor(30, 30, 50)
             doc.setFontSize(9)
-            doc.setTextColor(30, 60, 160)
-            doc.text(line.replace(/──\s*/g, '').replace(/\s*─+/g, '').trim(), margin, y)
-            doc.setTextColor(30, 30, 30)
-            y += 8
-        } else if (line === '') {
-            y += 4
-        } else if (line.startsWith('[Médico]') || line.startsWith('[Asistente IA]')) {
+            doc.text(paciente.nombre, colX, y + 10.5)
+            if (paciente.fechaNacimiento) {
+                doc.setFontSize(7.5)
+                doc.setTextColor(80, 90, 110)
+                doc.text(`Nac. ${paciente.fechaNacimiento}`, colX, y + 15.5)
+            }
+            colX += 70
+        }
+        if (informe) {
+            doc.setFont('helvetica', 'bold')
+            doc.setFontSize(8)
+            doc.setTextColor(30, 60, 140)
+            doc.text('RESULTADO DEL ANÁLISIS', colX, y + 5)
+            doc.setFont('helvetica', 'normal')
+            doc.setFontSize(9)
+            doc.setTextColor(30, 30, 50)
+            doc.text(informe.etiquetaCarcinoma, colX, y + 10.5)
+            doc.setFontSize(7.5)
+            doc.setTextColor(80, 90, 110)
+            doc.text(`Probabilidad: ${informe.porcentajeCarcinoma}%  |  Severidad: ${informe.severidad}`, colX, y + 15.5)
+        }
+        y += (paciente && informe ? 22 : 12) + 6
+    }
+
+    // ── Renderizar líneas del reporte ──
+    for (const line of lines) {
+        // Saltar las líneas del encabezado ya renderizadas
+        if (
+            line.startsWith('REPORTE CLÍNICO') ||
+            line.startsWith('Folio:') ||
+            line.startsWith('Fecha de generación:') ||
+            line.startsWith('CONFIDENCIAL —') ||
+            line.startsWith('Nombre completo:') ||
+            line.startsWith('Fecha de nacimiento:') ||
+            (line.startsWith('Folio:') && line.includes('Generado:'))
+        ) continue
+
+        // Nueva página si no cabe
+        const checkAndPage = (needed = 6) => {
+            if (y + needed > pageH - 15) {
+                doc.addPage()
+                pageNum++
+                drawPageChrome(pageNum)
+                y = 26
+            }
+        }
+        checkAndPage()
+
+        // Sección principal (──)
+        if (line.startsWith('──')) {
+            checkAndPage(12)
+            const title = line.replace(/──\s*/g, '').replace(/\s*─+/g, '').trim()
+            doc.setFillColor(10, 25, 60)
+            doc.rect(marginL, y - 3, 2.5, 8, 'F')
+            doc.setFillColor(237, 242, 255)
+            doc.rect(marginL + 2.5, y - 3, contentW - 2.5, 8, 'F')
             doc.setFont('helvetica', 'bold')
             doc.setFontSize(8.5)
-            const isAI = line.includes('Asistente IA')
-            doc.setTextColor(isAI ? 43 : 30, isAI ? 107 : 30, isAI ? 224 : 30)
-            doc.text(line, margin, y)
+            doc.setTextColor(10, 25, 60)
+            doc.text(title, marginL + 6, y + 1.8)
             doc.setTextColor(30, 30, 30)
+            y += 10
+
+            // Línea separadora final
+        } else if (line.startsWith('─────')) {
+            checkAndPage(6)
+            doc.setDrawColor(200, 210, 230)
+            doc.setLineWidth(0.4)
+            doc.line(marginL, y, pageW - marginR, y)
             y += 5
-        } else if (line.startsWith('  •')) {
+
+            // Pie de documento (última línea)
+        } else if (line.includes('No reemplaza el criterio clínico')) {
+            checkAndPage(8)
+            doc.setFillColor(255, 248, 230)
+            doc.setDrawColor(230, 180, 60)
+            doc.setLineWidth(0.3)
+            doc.roundedRect(marginL, y - 1, contentW, 8, 1.5, 1.5, 'FD')
+            doc.setFont('helvetica', 'italic')
+            doc.setFontSize(7.5)
+            doc.setTextColor(120, 80, 0)
+            doc.text(line, marginL + 3, y + 4)
+            y += 10
+
+            // Línea en blanco
+        } else if (line === '') {
+            y += 3.5
+
+            // Subsecciones en MAYÚSCULAS (títulos de secciones IA)
+        } else if (
+            line === line.toUpperCase() &&
+            line.length > 6 &&
+            !line.endsWith('.') &&
+            !line.includes(':') &&
+            !line.startsWith('  ')
+        ) {
+            checkAndPage(9)
+            doc.setFillColor(230, 236, 255)
+            doc.rect(marginL, y - 2.5, contentW, 6.5, 'F')
+            doc.setFont('helvetica', 'bold')
+            doc.setFontSize(8)
+            doc.setTextColor(30, 60, 160)
+            doc.text(line, marginL + 3, y + 2)
+            doc.setTextColor(30, 30, 30)
+            y += 9
+
+            // Campos clave (Label: valor)
+        } else if (line.includes(':') && !line.startsWith('  ') && line.split(':')[0].length < 50) {
+            checkAndPage(6)
+            const colonIdx = line.indexOf(':')
+            const label = line.substring(0, colonIdx).trim()
+            const value = line.substring(colonIdx + 1).trim()
+            doc.setFont('helvetica', 'bold')
+            doc.setFontSize(8.5)
+            doc.setTextColor(40, 50, 80)
+            const labelW = doc.getTextWidth(`${label}: `)
+            doc.text(`${label}: `, marginL, y)
             doc.setFont('helvetica', 'normal')
-            doc.setFontSize(9)
-            doc.text(line, margin + 4, y)
+            doc.setTextColor(30, 30, 30)
+            const wrapped = doc.splitTextToSize(value, contentW - labelW)
+            doc.text(wrapped[0] ?? '', marginL + labelW, y)
             y += 5
-        } else {
-            doc.setFont('helvetica', 'normal')
-            doc.setFontSize(9)
-            const wrapped = doc.splitTextToSize(line, pageW - margin * 2)
-            wrapped.forEach((wl: string) => {
-                if (y > pageH - margin) { doc.addPage(); y = margin }
-                doc.text(wl, margin, y)
+            for (let i = 1; i < wrapped.length; i++) {
+                checkAndPage(5)
+                doc.text(wrapped[i], marginL + labelW, y)
                 y += 5
+            }
+
+            // Viñetas
+        } else if (line.startsWith('  •')) {
+            checkAndPage(5)
+            doc.setFont('helvetica', 'normal')
+            doc.setFontSize(8.5)
+            doc.setTextColor(43, 107, 224)
+            doc.text('•', marginL + 4, y)
+            doc.setTextColor(30, 30, 30)
+            const text = line.replace('  •', '').trim()
+            const wrapped = doc.splitTextToSize(text, contentW - 10)
+            wrapped.forEach((wl: string, i: number) => {
+                checkAndPage(5)
+                doc.text(wl, marginL + 8, y)
+                if (i < wrapped.length - 1) y += 5
+            })
+            y += 5
+
+            // Texto normal (prosa IA)
+        } else {
+            checkAndPage(5)
+            doc.setFont('helvetica', 'normal')
+            doc.setFontSize(9)
+            doc.setTextColor(30, 30, 30)
+            const wrapped = doc.splitTextToSize(line, contentW)
+            wrapped.forEach((wl: string) => {
+                checkAndPage(5)
+                doc.text(wl, marginL, y)
+                y += 5.2
             })
         }
     }
@@ -257,112 +456,183 @@ async function buildDOCX(
     informe: Estudio['informe'] | null,
     _messages: readonly Mensaje[],
     geminiNarrative: string | null,
+    nombreDocumento?: string | null,
 ): Promise<{ blob: Blob; filename: string }> {
     const now = new Date().toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'short' })
+    const folio = `RPT-${Date.now().toString(36).toUpperCase()}`
 
     const paragraphs: Paragraph[] = []
 
+    // ── Encabezado principal ──
     paragraphs.push(new Paragraph({
-        text: 'Reporte Clínico — Asistente Médico IA',
-        heading: HeadingLevel.HEADING_1,
+        children: [new TextRun({ text: 'REPORTE CLÍNICO', bold: true, size: 32, color: '0A193C', font: 'Calibri' })],
         alignment: AlignmentType.CENTER,
-        spacing: { after: 120 },
+        spacing: { after: 40 },
     }))
     paragraphs.push(new Paragraph({
-        children: [new TextRun({ text: `Generado: ${now}`, color: '666666', size: 18 })],
+        children: [new TextRun({ text: 'Asistente Médico con Inteligencia Artificial', size: 22, color: '2B6BE0', font: 'Calibri' })],
         alignment: AlignmentType.CENTER,
-        spacing: { after: 300 },
+        spacing: { after: 60 },
     }))
 
-    function sectionHeader(title: string) {
+    // Línea separadora decorativa
+    paragraphs.push(new Paragraph({
+        border: { bottom: { style: BorderStyle.THICK, size: 12, color: '0A193C' } },
+        spacing: { after: 180 },
+    }))
+
+    // ── Bloque de metadatos del documento ──
+    paragraphs.push(new Paragraph({
+        children: [
+            new TextRun({ text: 'Folio: ', bold: true, size: 18, color: '444444' }),
+            new TextRun({ text: folio, size: 18, color: '2B6BE0' }),
+            new TextRun({ text: '   |   ', size: 18, color: 'AAAAAA' }),
+            new TextRun({ text: 'Fecha: ', bold: true, size: 18, color: '444444' }),
+            new TextRun({ text: now, size: 18, color: '444444' }),
+        ],
+        spacing: { after: 40 },
+    }))
+    paragraphs.push(new Paragraph({
+        children: [new TextRun({
+            text: '⚠ DOCUMENTO CONFIDENCIAL — USO EXCLUSIVO DEL PERSONAL MÉDICO AUTORIZADO',
+            bold: true, size: 16, color: 'B45309',
+        })],
+        spacing: { after: 280 },
+    }))
+
+    // ── Helper: cabecera de sección numerada ──
+    function sectionHeader(num: string, title: string) {
         paragraphs.push(new Paragraph({
-            text: title,
+            children: [
+                new TextRun({ text: `${num}. `, bold: true, size: 22, color: '2B6BE0' }),
+                new TextRun({ text: title.toUpperCase(), bold: true, size: 22, color: '0A193C' }),
+            ],
             heading: HeadingLevel.HEADING_2,
-            spacing: { before: 300, after: 100 },
-            border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '2B6BE0' } },
+            spacing: { before: 320, after: 100 },
+            border: {
+                bottom: { style: BorderStyle.SINGLE, size: 6, color: '2B6BE0' },
+                left: { style: BorderStyle.THICK, size: 18, color: '2B6BE0' },
+            },
         }))
     }
 
+    // ── Helper: fila label-valor ──
     function row(label: string, value: string) {
         paragraphs.push(new Paragraph({
             children: [
-                new TextRun({ text: `${label}: `, bold: true, size: 20 }),
-                new TextRun({ text: value, size: 20 }),
+                new TextRun({ text: `${label}:`, bold: true, size: 20, color: '1E3A8A' }),
+                new TextRun({ text: `  ${value}`, size: 20, color: '111827' }),
             ],
-            spacing: { after: 60 },
+            spacing: { after: 80 },
         }))
     }
 
-    if (paciente) {
-        sectionHeader('Paciente')
-        row('Nombre', paciente.nombre)
-        if (paciente.fechaNacimiento) row('Fecha de nacimiento', paciente.fechaNacimiento)
-        if (paciente.notas) row('Notas', paciente.notas)
+    // ── Helper: subsección IA ──
+    function aiSubsection(title: string) {
+        paragraphs.push(new Paragraph({
+            children: [new TextRun({ text: title, bold: true, size: 20, color: '1E3A8A' })],
+            spacing: { before: 200, after: 80 },
+            border: { left: { style: BorderStyle.SINGLE, size: 12, color: '93C5FD' } },
+        }))
     }
 
+    // ── I. Datos del Paciente ──
+    if (paciente) {
+        sectionHeader('I', 'Datos del Paciente')
+        row('Nombre completo', paciente.nombre)
+        if (paciente.fechaNacimiento) row('Fecha de nacimiento', paciente.fechaNacimiento)
+        if (paciente.notas) row('Antecedentes / Notas clínicas', paciente.notas)
+        if (nombreDocumento) row('Documento clínico adjunto', nombreDocumento)
+    }
+
+    // ── II. Datos del Estudio ──
     if (estudio && informe) {
-        sectionHeader('Estudio Analizado')
-        row('Archivo', estudio.nombreArchivo)
-        row('Fecha', estudio.creadoEn)
-        row('Resultado', informe.etiquetaCarcinoma)
+        sectionHeader('II', 'Datos del Estudio Analizado')
+        row('Archivo de imagen', estudio.nombreArchivo)
+        row('Fecha de realización', estudio.creadoEn)
+        if (estudio.id) row('Identificador de estudio', estudio.id)
+    }
+
+    // ── III. Resultados del Análisis ──
+    if (informe) {
+        sectionHeader('III', 'Resultados del Análisis Automatizado')
+        row('Diagnóstico del modelo', informe.etiquetaCarcinoma)
         row('Probabilidad de carcinoma', `${informe.porcentajeCarcinoma}%`)
-        row('Severidad', informe.severidad)
+        row('Nivel de severidad asignado', informe.severidad)
+
         if (informe.patologiasRelevantes.length > 0) {
             paragraphs.push(new Paragraph({
-                children: [new TextRun({ text: 'Patologías detectadas:', bold: true, size: 20 })],
-                spacing: { before: 60, after: 40 },
+                children: [new TextRun({ text: 'Patologías detectadas con relevancia estadística:', bold: true, size: 20, color: '1E3A8A' })],
+                spacing: { before: 120, after: 60 },
             }))
             informe.patologiasRelevantes.forEach(p => {
                 paragraphs.push(new Paragraph({
-                    children: [new TextRun({ text: `• ${p.nombre}: ${p.porcentaje}%`, size: 20 })],
-                    indent: { left: 360 },
-                    spacing: { after: 40 },
+                    children: [
+                        new TextRun({ text: `${p.nombre}`, bold: true, size: 19, color: '1E3A8A' }),
+                        new TextRun({ text: `  —  ${p.porcentaje}%`, size: 19, color: '374151' }),
+                    ],
+                    indent: { left: 480 },
+                    spacing: { after: 60 },
+                    bullet: { level: 0 },
                 }))
             })
         }
-        if (estudio.notas) row('Notas del médico', estudio.notas)
+
+        if (estudio?.notas) {
+            paragraphs.push(new Paragraph({ spacing: { after: 80 } }))
+            row('Observaciones del médico solicitante', estudio.notas)
+        }
     }
 
+    // ── IV. Análisis Clínico IA ──
     if (geminiNarrative) {
-        sectionHeader('Interpretación Clínica (IA)')
+        sectionHeader('IV', 'Análisis Clínico Generado por Inteligencia Artificial')
+
         const geminiLines = geminiNarrative.split('\n')
         for (const line of geminiLines) {
             const trimmed = line.trim()
             if (!trimmed) {
-                paragraphs.push(new Paragraph({ spacing: { after: 80 } }))
+                paragraphs.push(new Paragraph({ spacing: { after: 100 } }))
                 continue
             }
             const isSubsection = trimmed === trimmed.toUpperCase() && trimmed.length > 4 && !trimmed.endsWith('.')
             if (isSubsection) {
-                paragraphs.push(new Paragraph({
-                    children: [new TextRun({ text: trimmed, bold: true, color: '1E3A8A', size: 20 })],
-                    spacing: { before: 160, after: 60 },
-                }))
+                aiSubsection(trimmed)
             } else {
                 paragraphs.push(new Paragraph({
-                    children: [new TextRun({ text: trimmed, size: 20 })],
-                    spacing: { after: 60 },
+                    children: [new TextRun({ text: trimmed, size: 20, color: '111827' })],
+                    spacing: { after: 80 },
                 }))
             }
         }
     }
 
+    // ── Pie / Aviso legal ──
+    paragraphs.push(new Paragraph({
+        border: { top: { style: BorderStyle.SINGLE, size: 6, color: 'D1D5DB' } },
+        spacing: { before: 480 },
+    }))
     paragraphs.push(new Paragraph({
         children: [new TextRun({
-            text: 'Documento generado automáticamente. No reemplaza el criterio clínico.',
-            italics: true, color: '888888', size: 17,
+            text: 'AVISO IMPORTANTE: Este informe fue generado mediante análisis automatizado por inteligencia artificial y tiene carácter orientativo. Debe ser revisado, validado e interpretado por un médico especialista certificado antes de tomar cualquier decisión clínica, diagnóstica o terapéutica.',
+            italics: true, size: 16, color: '6B7280',
         })],
         alignment: AlignmentType.CENTER,
-        spacing: { before: 400 },
-        border: { top: { style: BorderStyle.SINGLE, size: 4, color: 'CCCCCC' } },
+        spacing: { after: 80 },
+    }))
+    paragraphs.push(new Paragraph({
+        children: [
+            new TextRun({ text: `Folio: ${folio}  |  `, size: 15, color: '9CA3AF' }),
+            new TextRun({ text: `Generado: ${now}`, size: 15, color: '9CA3AF' }),
+        ],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 0 },
     }))
 
     const doc = new Document({
         styles: {
             default: {
-                document: {
-                    run: { font: 'Calibri', size: 20 },
-                },
+                document: { run: { font: 'Calibri', size: 20, color: '111827' } },
             },
         },
         sections: [{ children: paragraphs }],
@@ -375,7 +645,7 @@ async function buildDOCX(
 
 // ── Modal ────────────────────────────────────────────────────────────────────
 
-export function ReportModal({ paciente, estudio, informe, messages, onClose }: ReportModalProps) {
+export function ReportModal({ paciente, estudio, informe, messages, documentoClinico, nombreDocumento, onClose }: ReportModalProps) {
     const [formato, setFormato] = useState<Formato>('pdf')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -387,20 +657,38 @@ export function ReportModal({ paciente, estudio, informe, messages, onClose }: R
     const [geminiLoading, setGeminiLoading] = useState(false)
     const [geminiError, setGeminiError] = useState(false)
 
-    // Generamos la narrativa al abrir el modal si hay un informe disponible
+    // Guardamos las props en refs para poder leerlas dentro del efecto
+    // sin necesidad de incluirlas como dependencias (no queremos regenerar
+    // la narrativa cada vez que paciente/estudio/informe cambian — solo
+    // cuando el médico adjunta un nuevo documento clínico).
+    const informeRef       = useRef(informe)
+    const pacienteRef      = useRef(paciente)
+    const estudioRef       = useRef(estudio)
+    const nombreDocRef     = useRef(nombreDocumento)
+    informeRef.current     = informe
+    pacienteRef.current    = paciente
+    estudioRef.current     = estudio
+    nombreDocRef.current   = nombreDocumento
+
     useEffect(() => {
-        if (!informe) return
+        if (!informeRef.current) return
         setGeminiLoading(true)
         setGeminiError(false)
-        generateGeminiNarrative(informe, paciente, estudio)
+        setGeminiNarrative(null)
+        generateGeminiNarrative(
+            informeRef.current,
+            pacienteRef.current,
+            estudioRef.current,
+            documentoClinico,
+            nombreDocRef.current,
+        )
             .then(narrative => {
                 setGeminiNarrative(narrative)
                 if (!narrative) setGeminiError(true)
             })
             .catch(() => setGeminiError(true))
             .finally(() => setGeminiLoading(false))
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []) // Solo al montar
+    }, [documentoClinico]) // Re-genera solo cuando cambia el documento adjunto
 
     async function handleDownload() {
         setLoading(true)
@@ -410,9 +698,9 @@ export function ReportModal({ paciente, estudio, informe, messages, onClose }: R
             let filename: string
 
             if (formato === 'pdf') {
-                ;({ blob, filename } = await buildPDF(paciente, estudio, informe, messages, geminiNarrative))
+                ;({ blob, filename } = await buildPDF(paciente, estudio, informe, messages, geminiNarrative, nombreDocumento))
             } else {
-                ;({ blob, filename } = await buildDOCX(paciente, estudio, informe, messages, geminiNarrative))
+                ;({ blob, filename } = await buildDOCX(paciente, estudio, informe, messages, geminiNarrative, nombreDocumento))
             }
 
             // Descargar el archivo
@@ -543,6 +831,7 @@ export function ReportModal({ paciente, estudio, informe, messages, onClose }: R
                         </div>
                         <IncludeRow icon="🧑‍⚕️" label="Datos del paciente"  active={!!paciente}  value={paciente?.nombre} />
                         <IncludeRow icon="🩻" label="Resultado del estudio" active={!!informe}   value={informe ? `${informe.porcentajeCarcinoma}%` : undefined} />
+                        <IncludeRow icon="📄" label="Documento clínico"     active={!!documentoClinico} value={nombreDocumento ?? undefined} />
                         <IncludeRow icon="🤖" label="Interpretación IA"     active={!!geminiNarrative && !geminiLoading} value={geminiLoading ? 'cargando…' : geminiError ? 'no disponible' : undefined} />
                         {!hasContext && (
                             <p style={{ fontSize: 11, color: 'var(--t2)', margin: '6px 0 0' }}>

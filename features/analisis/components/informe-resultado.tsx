@@ -6,6 +6,7 @@
 // del modelo, patologías agrupadas por severidad y acciones con contexto.
 
 import type { InformeAnalisis } from '@/lib/tipos'
+import { MedicalDisclaimer } from '@/components/medical/medical-disclaimer'
 
 interface InformeResultadoProps {
     readonly informe: InformeAnalisis
@@ -74,27 +75,9 @@ export function InformeResultado({ informe, imagenDataUrl, gradcamBase64, onGuar
                     <div style={estiloCard}>
                         <div style={estiloLabel}>Resultado del análisis</div>
 
-                        {/* Disclaimer médico — visible antes de leer el número */}
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: 10,
-                            padding: '10px 14px',
-                            borderRadius: 10,
-                            background: 'var(--warn-bg)',
-                            border: '1px solid var(--warn)',
-                            marginBottom: 18,
-                        }}>
-                            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
-                                <circle cx="8" cy="8" r="7" stroke="var(--warn)" strokeWidth="1.4" />
-                                <path d="M8 5v3.5" stroke="var(--warn)" strokeWidth="1.5" strokeLinecap="round" />
-                                <circle cx="8" cy="11.5" r="0.8" fill="var(--warn)" />
-                            </svg>
-                            <span style={{ fontSize: 12, color: 'var(--warn)', lineHeight: 1.6 }}>
-                                Este resultado es generado por un modelo de IA y{' '}
-                                <strong style={{ fontWeight: 600 }}>no sustituye el diagnóstico médico.</strong>
-                                {' '}Debe ser interpretado por un profesional de salud.
-                            </span>
+                        {/* Disclaimer médico inline — siempre visible, antes del número */}
+                        <div style={{ marginBottom: 16 }}>
+                            <MedicalDisclaimer variante="inline" />
                         </div>
 
                         {/* Número principal */}
@@ -126,8 +109,24 @@ export function InformeResultado({ informe, imagenDataUrl, gradcamBase64, onGuar
                                 </svg>
                                 {riesgo.texto}
                             </span>
-                            <span style={{ fontSize: 11, color: 'var(--t2)' }}>
+                            <span
+                                style={{
+                                    fontSize: 11,
+                                    color: 'var(--t2)',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                    cursor: 'help',
+                                    borderBottom: '1px dotted var(--border-h)',
+                                }}
+                                title="Umbral óptimo calibrado por el método de Youden's J. Por encima de 50% el modelo clasifica el caso como positivo. Calibrado con Temperature Scaling (T=1.44) para que el porcentaje refleje confianza real."
+                            >
                                 Umbral de detección del modelo: 50%
+                                <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                                    <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3" />
+                                    <path d="M8 7.5V11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                                    <circle cx="8" cy="5.2" r="0.85" fill="currentColor" />
+                                </svg>
                             </span>
                         </div>
                     </div>

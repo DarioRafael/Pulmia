@@ -3,14 +3,16 @@
 import { useState, useEffect } from 'react'
 import type React from 'react'
 import { HeaderApp } from '@/components/layout/header-app'
+import { MedicalDisclaimer } from '@/components/medical/medical-disclaimer'
+import { PacienteSelector, type SeleccionPaciente } from '@/components/pacientes/paciente-selector'
 import { ZonaSubida, InformeResultado, useAnalisis } from '@/features/analisis'
 import { useInformeActivo } from '@/features/analisis/informe-activo-context'
-import { useEstudios } from '@/features/estudios'
+import { useEstudios, NOTAS_MAX_CHARS } from '@/features/estudios'
 import { usePacientes } from '@/features/pacientes'
 import { usePlan } from '@/components/plan'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import type { Paciente } from '@/lib/tipos'
+import { comprimirImagen, tamanoDataUrlBytes } from '@/lib/utils/imagen'
 
 
 
@@ -126,10 +128,11 @@ export default function AnalizarPage() {
     const router = useRouter()
 
     const [mostrarGuardar, setMostrarGuardar] = useState(false)
-    const [pacienteSeleccionado, setPacienteSeleccionado] = useState<string>('')
-    const [nuevoPacienteNombre, setNuevoPacienteNombre] = useState('')
+    const [seleccionPaciente, setSeleccionPaciente] = useState<SeleccionPaciente>({ tipo: 'ninguno' })
     const [notas, setNotas] = useState('')
     const [imagenMeta, setImagenMeta] = useState<{ size: string; type: string; dims?: string } | null>(null)
+    const [guardando, setGuardando] = useState(false)
+    const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
 
     useEffect(() => {
         if (estado.paso !== 'completado') return
@@ -172,26 +175,51 @@ export default function AnalizarPage() {
     function handleReiniciar() {
         limpiarInformeActivo()
         reiniciar()
+        setErrorGuardado(null)
+        setSeleccionPaciente({ tipo: 'ninguno' })
+        setNotas('')
     }
 
-    function handleGuardar() {
+    async function handleGuardar() {
         if (estado.paso !== 'completado') return
-        let pacienteId: string | undefined
-        if (nuevoPacienteNombre.trim()) {
-            const nuevoPaciente = guardarPaciente({ nombre: nuevoPacienteNombre.trim() })
-            pacienteId = nuevoPaciente.id
-        } else if (pacienteSeleccionado) {
-            pacienteId = pacienteSeleccionado
+        if (guardando) return
+        setGuardando(true)
+        setErrorGuardado(null)
+        try {
+            // 1. Resolver paciente (crear si es nuevo).
+            let pacienteId: string | undefined
+            if (seleccionPaciente.tipo === 'existente') {
+                pacienteId = seleccionPaciente.pacienteId
+            } else if (seleccionPaciente.tipo === 'nuevo' && seleccionPaciente.nombre.trim()) {
+                const nuevo = guardarPaciente({ nombre: seleccionPaciente.nombre.trim() })
+                pacienteId = nuevo.id
+            }
+
+            // 2. Comprimir la imagen original — radiografías pueden ser muy grandes
+            // y revientan localStorage si se guardan tal cual.
+            const imagenOptimizada = await comprimirImagen(estado.imagenDataUrl, 1280, 0.85)
+
+            // 3. Guardar (devuelve resultado en lugar de throw).
+            const resultado = guardar({
+                imagenDataUrl: imagenOptimizada,
+                nombreArchivo: estado.nombreArchivo,
+                mimeType: imagenOptimizada.startsWith('data:image/jpeg') ? 'image/jpeg' : estado.mimeType,
+                informe: estado.informe,
+                pacienteId,
+                notas: notas.trim() || undefined,
+            })
+
+            if (!resultado.ok) {
+                setErrorGuardado(resultado.mensaje)
+                return
+            }
+            router.push(`/estudios/${resultado.estudio.id}`)
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Error inesperado al guardar el estudio.'
+            setErrorGuardado(msg)
+        } finally {
+            setGuardando(false)
         }
-        const estudio = guardar({
-            imagenDataUrl: estado.imagenDataUrl,
-            nombreArchivo: estado.nombreArchivo,
-            mimeType: estado.mimeType,
-            informe: estado.informe,
-            pacienteId,
-            notas: notas.trim() || undefined,
-        })
-        router.push(`/estudios/${estudio.id}`)
     }
 
 
@@ -207,10 +235,14 @@ export default function AnalizarPage() {
             />
 
             <div style={{
-                flex: 1, overflowY: 'auto', padding: '32px 24px',
+                flex: 1, overflowY: 'auto', padding: '20px 24px 32px',
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
                 position: 'relative', zIndex: 1,
             }}>
+                {/* ── Aviso médico-legal — banner permanente ──────────── */}
+                <div style={{ maxWidth: 1200, width: '100%', marginBottom: 20 }}>
+                    <MedicalDisclaimer variante="banner" />
+                </div>
 
                 {/* ── Paso 1: Zona de subida ─────────────────────────────── */}
                 {estado.paso === 'idle' && (
@@ -585,103 +617,151 @@ export default function AnalizarPage() {
                 {/* ── Paso 4b: Guardar estudio ──────────────────────────── */}
                 {estado.paso === 'completado' && mostrarGuardar && (
                     <div style={{
-                        maxWidth: 480, width: '100%', margin: '0 auto',
+                        maxWidth: 520, width: '100%', margin: '0 auto',
                         display: 'flex', flexDirection: 'column', gap: 16,
                     }}>
                         <div style={{
-                            padding: '20px', borderRadius: 14,
+                            padding: '22px', borderRadius: 14,
                             background: 'var(--bg-2)', border: '1px solid var(--border)',
                         }}>
                             <div style={{
                                 fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--t2)',
-                                letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 16,
+                                letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 18,
                             }}>
                                 Guardar estudio
                             </div>
 
-                            <label style={{ display: 'block', marginBottom: 12 }}>
-                                <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--t1)', display: 'block', marginBottom: 6 }}>
-                                    Paciente existente
-                                </span>
-                                <select
-                                    value={pacienteSeleccionado}
-                                    onChange={(e) => {
-                                        setPacienteSeleccionado(e.target.value)
-                                        if (e.target.value) setNuevoPacienteNombre('')
-                                    }}
-                                    style={{
-                                        width: '100%', padding: '10px 12px', borderRadius: 8,
-                                        background: 'var(--bg-3)', color: 'var(--t0)',
-                                        border: '1px solid var(--border)', fontSize: 13,
-                                    }}
-                                >
-                                    <option value="">— Sin paciente —</option>
-                                    {pacientes.map((p: Paciente) => (
-                                        <option key={p.id} value={p.id}>{p.nombre}</option>
-                                    ))}
-                                </select>
-                            </label>
-
-                            <label style={{ display: 'block', marginBottom: 12 }}>
-                                <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--t1)', display: 'block', marginBottom: 6 }}>
-                                    O crear nuevo paciente
-                                </span>
-                                <input
-                                    type="text"
-                                    value={nuevoPacienteNombre}
-                                    onChange={(e) => {
-                                        setNuevoPacienteNombre(e.target.value)
-                                        if (e.target.value) setPacienteSeleccionado('')
-                                    }}
-                                    placeholder="Nombre del paciente..."
-                                    style={{
-                                        width: '100%', padding: '10px 12px', borderRadius: 8,
-                                        background: 'var(--bg-3)', color: 'var(--t0)',
-                                        border: '1px solid var(--border)', fontSize: 13,
-                                    }}
+                            {/* Selector unificado de paciente */}
+                            <div style={{ marginBottom: 16 }}>
+                                <PacienteSelector
+                                    pacientes={pacientes}
+                                    valor={seleccionPaciente}
+                                    onChange={setSeleccionPaciente}
+                                    label="Paciente"
                                 />
-                            </label>
+                            </div>
 
+                            {/* Notas con contador y límite */}
                             <label style={{ display: 'block', marginBottom: 16 }}>
-                                <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--t1)', display: 'block', marginBottom: 6 }}>
-                                    Notas (opcional)
-                                </span>
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    marginBottom: 6,
+                                }}>
+                                    <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--t1)' }}>
+                                        Notas <span style={{ color: 'var(--t2)' }}>(opcional)</span>
+                                    </span>
+                                    <span style={{
+                                        fontFamily: 'var(--mono)', fontSize: 10,
+                                        color: notas.length > NOTAS_MAX_CHARS * 0.9
+                                            ? 'var(--warn)'
+                                            : 'var(--t2)',
+                                    }}>
+                                        {notas.length.toLocaleString()} / {NOTAS_MAX_CHARS.toLocaleString()}
+                                    </span>
+                                </div>
                                 <textarea
                                     value={notas}
-                                    onChange={(e) => setNotas(e.target.value)}
-                                    placeholder="Observaciones del estudio..."
-                                    rows={3}
+                                    onChange={(e) => {
+                                        const v = e.target.value
+                                        // Cortamos en cliente para que el contador no exceda visualmente.
+                                        setNotas(v.length > NOTAS_MAX_CHARS ? v.slice(0, NOTAS_MAX_CHARS) : v)
+                                    }}
+                                    placeholder="Observaciones clínicas del estudio…"
+                                    rows={4}
+                                    maxLength={NOTAS_MAX_CHARS}
                                     style={{
                                         width: '100%', padding: '10px 12px', borderRadius: 8,
                                         background: 'var(--bg-3)', color: 'var(--t0)',
                                         border: '1px solid var(--border)', fontSize: 13,
                                         resize: 'vertical', fontFamily: 'inherit',
+                                        minHeight: 80,
+                                        lineHeight: 1.55,
                                     }}
                                 />
+                                <div style={{
+                                    fontSize: 11, color: 'var(--t2)', marginTop: 4,
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                }}>
+                                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                                        <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/>
+                                        <path d="M8 7.5V11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                                        <circle cx="8" cy="5.2" r="0.85" fill="currentColor"/>
+                                    </svg>
+                                    Las notas se guardan localmente en este dispositivo.
+                                </div>
                             </label>
+
+                            {/* Peso aproximado del estudio para que el usuario tenga contexto */}
+                            <div style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                padding: '8px 12px', borderRadius: 8,
+                                background: 'var(--bg-3)', border: '1px solid var(--border)',
+                                marginBottom: 16,
+                                fontSize: 11, color: 'var(--t2)', fontFamily: 'var(--mono)',
+                            }}>
+                                <span>Imagen original ≈ {Math.round(tamanoDataUrlBytes(estado.imagenDataUrl) / 1024)} KB</span>
+                                <span>Se optimizará al guardar</span>
+                            </div>
+
+                            {/* Mensaje de error si falló el guardado */}
+                            {errorGuardado && (
+                                <div role="alert" style={{
+                                    display: 'flex', alignItems: 'flex-start', gap: 10,
+                                    padding: '10px 14px', borderRadius: 10,
+                                    background: 'var(--err-bg)', border: '1px solid var(--err)',
+                                    marginBottom: 14,
+                                }}>
+                                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
+                                        <circle cx="8" cy="8" r="7" stroke="var(--err)" strokeWidth="1.4" />
+                                        <path d="M8 5v3.5" stroke="var(--err)" strokeWidth="1.5" strokeLinecap="round" />
+                                        <circle cx="8" cy="11.5" r="0.8" fill="var(--err)" />
+                                    </svg>
+                                    <span style={{ fontSize: 12, color: 'var(--err)', lineHeight: 1.55 }}>
+                                        {errorGuardado}
+                                    </span>
+                                </div>
+                            )}
 
                             <div style={{ display: 'flex', gap: 10 }}>
                                 <button
-                                    onClick={() => setMostrarGuardar(false)}
+                                    onClick={() => { setMostrarGuardar(false); setErrorGuardado(null) }}
+                                    disabled={guardando}
                                     style={{
                                         flex: 1, padding: '10px 16px', borderRadius: 8,
                                         background: 'var(--bg-3)', color: 'var(--t1)',
                                         border: '1px solid var(--border)', fontSize: 13,
-                                        cursor: 'pointer',
+                                        cursor: guardando ? 'not-allowed' : 'pointer',
+                                        opacity: guardando ? 0.6 : 1,
                                     }}
                                 >
                                     Volver
                                 </button>
                                 <button
                                     onClick={handleGuardar}
+                                    disabled={guardando}
                                     style={{
                                         flex: 1, padding: '10px 16px', borderRadius: 8,
                                         background: 'var(--accent)', color: '#fff', border: 'none',
-                                        fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                                        fontSize: 13, fontWeight: 600,
+                                        cursor: guardando ? 'not-allowed' : 'pointer',
                                         boxShadow: 'var(--shadow-accent)',
+                                        opacity: guardando ? 0.7 : 1,
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                                     }}
                                 >
-                                    Guardar estudio
+                                    {guardando ? (
+                                        <>
+                                            <span
+                                                style={{
+                                                    width: 12, height: 12, borderRadius: '50%',
+                                                    border: '2px solid rgba(255,255,255,0.4)',
+                                                    borderTopColor: '#fff',
+                                                    animation: 'spin 0.8s linear infinite',
+                                                }}
+                                            />
+                                            Guardando…
+                                        </>
+                                    ) : 'Guardar estudio'}
                                 </button>
                             </div>
                         </div>

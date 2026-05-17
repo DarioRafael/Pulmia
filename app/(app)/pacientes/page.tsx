@@ -5,6 +5,7 @@
 
 import { useState } from 'react'
 import { HeaderApp } from '@/components/layout/header-app'
+import { MedicalDisclaimer } from '@/components/medical/medical-disclaimer'
 import { ListaPacientes, usePacientes } from '@/features/pacientes'
 import { useEstudios } from '@/features/estudios'
 import { useRouter } from 'next/navigation'
@@ -158,6 +159,13 @@ export default function PacientesPage() {
                     estudios={estudios}
                     onSeleccionar={(id) => router.push(`/pacientes/${id}`)}
                 />
+
+                {/* Disclaimer compact si hay pacientes */}
+                {pacientes.length > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
+                        <MedicalDisclaimer variante="compact" />
+                    </div>
+                )}
             </div>
         </>
     )
